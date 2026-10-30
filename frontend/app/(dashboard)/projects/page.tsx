@@ -156,7 +156,7 @@ export default function ProjectsPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by project, customer or engineer" aria-label="Search projects" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
           </div>
-          <Select value={filter} onValueChange={setFilter}>
+          <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by status"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All projects</SelectItem>{FILTERS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>
@@ -202,18 +202,18 @@ export default function ProjectsPage() {
             <TextField label="System size (kW)" type="number" min={0} value={draft.kw} onChange={set("kw")} />
             <div className="grid gap-2 sm:col-span-2">
               <label className="text-sm font-semibold text-slate-800">Customer</label>
-              <Select value={draft.customerId} onValueChange={(id) => {
+              <Select value={draft.customerId || null} onValueChange={(id) => {
                 const customer = customers.find((entry) => entry.id === id);
-                setDraft((current) => ({ ...current, customerId: id, customer: customer?.name ?? "", surveyId: "" }));
+                setDraft((current) => ({ ...current, customerId: id ?? "", customer: customer?.name ?? "", surveyId: "" }));
               }}>
                 <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select customer" /></SelectTrigger>
                 <SelectContent>{customers.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold text-slate-800">Completed site survey (optional)</label><Select value={draft.surveyId} onValueChange={(id) => setDraft((current) => ({ ...current, surveyId: id }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select a completed survey" /></SelectTrigger><SelectContent>{surveys.filter((survey) => survey.customerId === draft.customerId).map((survey) => <SelectItem key={survey.id} value={survey.id}>{survey.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold text-slate-800">Completed site survey (optional)</label><Select value={draft.surveyId || null} onValueChange={(id) => setDraft((current) => ({ ...current, surveyId: id ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select a completed survey" /></SelectTrigger><SelectContent>{surveys.filter((survey) => survey.customerId === draft.customerId).map((survey) => <SelectItem key={survey.id} value={survey.id}>{survey.name}</SelectItem>)}</SelectContent></Select></div>
             <TextField className="sm:col-span-2" label="Site address" value={draft.location} onChange={set("location")} placeholder="Area, city" />
-            <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Site engineer</label><Select value={draft.engineerId} onValueChange={(id) => setDraft((current) => ({ ...current, engineerId: id, engineer: engineers.find((entry) => entry.id === id)?.name ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select engineer" /></SelectTrigger><SelectContent>{engineers.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Installation team</label><Select value={draft.teamId} onValueChange={(id) => setDraft((current) => ({ ...current, teamId: id, crew: teams.find((entry) => entry.id === id)?.name ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select team" /></SelectTrigger><SelectContent>{teams.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Site engineer</label><Select value={draft.engineerId || null} onValueChange={(id) => setDraft((current) => ({ ...current, engineerId: id ?? "", engineer: engineers.find((entry) => entry.id === id)?.name ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select engineer" /></SelectTrigger><SelectContent>{engineers.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Installation team</label><Select value={draft.teamId || null} onValueChange={(id) => setDraft((current) => ({ ...current, teamId: id ?? "", crew: teams.find((entry) => entry.id === id)?.name ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select team" /></SelectTrigger><SelectContent>{teams.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent></Select></div>
           </TabsContent>
           <TabsContent value="schedule" className="grid gap-4 sm:grid-cols-2">
             <SelectField className="sm:col-span-2" label="Current stage" value={draft.stage} onChange={set("stage")} options={STAGES} />

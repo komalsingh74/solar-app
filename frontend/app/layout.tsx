@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import Providers from "@/app/providers";
 import "./globals.css";
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <Suspense fallback={<div role="status" className="p-6 text-sm text-slate-500">Loading application...</div>}>
+          <Providers>{children}</Providers>
+        </Suspense>
       </body>
     </html>
   );

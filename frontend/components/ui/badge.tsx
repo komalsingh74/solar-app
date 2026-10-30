@@ -29,14 +29,26 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant = "default",
+  tone,
   render,
   ...props
-}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & {
+  tone?: "blue" | "green" | "red" | "amber" | "indigo" | "slate";
+}) {
+  const toneClasses = {
+    blue: "bg-blue-50 text-blue-700 border-transparent",
+    green: "bg-emerald-50 text-emerald-700 border-transparent",
+    red: "bg-rose-50 text-rose-700 border-transparent",
+    amber: "bg-amber-50 text-amber-700 border-transparent",
+    indigo: "bg-indigo-50 text-indigo-700 border-transparent",
+    slate: "bg-slate-100 text-slate-700 border-transparent",
+  };
+
   return useRender({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
-        className: cn(badgeVariants({ variant }), className),
+        className: cn(badgeVariants({ variant }), tone ? toneClasses[tone] : undefined, className),
       },
       props
     ),

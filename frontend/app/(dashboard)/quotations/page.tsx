@@ -241,7 +241,7 @@ export default function QuotationsPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by customer or quotation number" aria-label="Search quotations" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
           </div>
-          <Select value={status} onValueChange={setStatus}>
+          <Select value={status || null} onValueChange={(value) => setStatus(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by status"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All statuses</SelectItem>{STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>
@@ -291,11 +291,11 @@ export default function QuotationsPage() {
                 <option value="">Select a customer</option>{customerStore.customers.filter((customer) => customer.status === "Active").map((customer) => <option key={customer.apiId} value={customer.apiId}>{customer.name} · {customer.phone}</option>)}
               </select>
             </label>
-            <SelectField label="Solar capacity (kW)" value={String(draft.kw)} options={CAPACITIES} onChange={(v) => setDraft((s) => ({ ...s, kw: Number(v), items: buildItems(Number(v)) }))} />
+            <SelectField label="Solar capacity (kW)" value={String(draft.kw)} options={CAPACITIES} onChange={(v) => set("kw", Number(v))} />
             <SelectField label="Phase" value={draft.phase} onChange={(v) => set("phase", v)} options={["Single", "Three"]} />
             <TextField label="Valid for (days)" type="number" min={1} value={draft.validDays} onChange={(v) => set("validDays", Number(v))} />
             <SelectField label="Status" value={draft.status} onChange={(v) => set("status", v)} options={STATUSES} />
-            <p className="text-sm text-muted-foreground sm:col-span-2">Changing the capacity refills panel and inverter items for that size.</p>
+            <p className="text-sm text-muted-foreground sm:col-span-2">Select panel and inverter items for this capacity in the Items tab.</p>
           </TabsContent>
 
           <TabsContent value="items">

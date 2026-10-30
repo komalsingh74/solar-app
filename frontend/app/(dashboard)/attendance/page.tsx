@@ -83,7 +83,7 @@ export default function AttendancePage() {
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-slate-500">Department
-                  <Select value={department} onValueChange={setDepartment}>
+                  <Select value={department || null} onValueChange={(value) => setDepartment(value ?? "")}>
                     <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50 text-sm font-normal text-slate-700" aria-label="Department"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
@@ -95,7 +95,7 @@ export default function AttendancePage() {
               </div>
             </>}
             {tab === "month" && (
-              <Select value={month} onValueChange={setMonth}>
+              <Select value={month || null} onValueChange={(value) => setMonth(value ?? "")}>
                 <SelectTrigger className="ml-auto h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Month"><SelectValue /></SelectTrigger>
                 <SelectContent>{[0, -1, -2].map((o) => <SelectItem key={o} value={monthKey(o)}>{monthLabel(monthKey(o))}</SelectItem>)}</SelectContent>
               </Select>

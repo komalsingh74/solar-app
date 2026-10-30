@@ -62,10 +62,10 @@ export const attOf = (s: Store, e: Employee, date: string): string => {
   const h = (e.id * 7 + Number(date.slice(8)) * 13) % 23;
   return h === 0 ? "A" : h === 1 ? "H" : h === 2 ? "L" : "P";
 };
-export const monthAtt = (s: Store, e: Employee, month: string) => {
+export const monthAtt = (s: Store, e: Employee, month: string): { P: number; A: number; H: number; L: number; U: number; W: number; lop: number } => {
   const c: Record<string, number> = { P: 0, A: 0, H: 0, L: 0, U: 0, W: 0 };
   for (let i = 1; i <= daysIn(month); i++) { const a = attOf(s, e, `${month}-${pad(i)}`); if (a) c[a]++; }
-  return { ...c, lop: c.A + c.U + c.H * 0.5 };
+  return { P: c.P, A: c.A, H: c.H, L: c.L, U: c.U, W: c.W, lop: c.A + c.U + c.H * 0.5 };
 };
 
 /* ---------- payroll ---------- */

@@ -69,7 +69,7 @@ export default function ShiftsPage() {
                 <TableCell className="px-4">{sh?.offDay ?? "—"}</TableCell>
                 <TableCell className="px-4">{sh ? `${t12(sh.start)} – ${t12(sh.end)}` : "—"}</TableCell>
                 <TableCell className="px-4">
-                  <Select value={e.shift} onValueChange={(v) => setShift(e.id, v)}>
+                  <Select value={e.shift} onValueChange={(v) => { if (v !== null) setShift(e.id, v); }}>
                     <SelectTrigger className="h-9 w-[150px] rounded-lg border-slate-200" aria-label={`Shift for ${e.name}`}><SelectValue /></SelectTrigger>
                     <SelectContent>{s.shifts.map((x) => <SelectItem key={x.id} value={x.name}>{x.name}</SelectItem>)}</SelectContent>
                   </Select>

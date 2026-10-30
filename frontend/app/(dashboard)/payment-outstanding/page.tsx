@@ -317,7 +317,7 @@ export default function PaymentsPage() {
         <Panel className="overflow-hidden">
           <div className="flex flex-wrap gap-3 p-4">
             {searchBox}
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <Select value={typeFilter || null} onValueChange={(value) => setTypeFilter(value ?? "")}>
               <SelectTrigger className="h-10 w-[190px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by payment type"><SelectValue placeholder="All payment types" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All payment types</SelectItem>
@@ -325,7 +325,7 @@ export default function PaymentsPage() {
                 <SelectItem value="none">Plan not set</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={filter} onValueChange={setFilter}>
+            <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
               <SelectTrigger className="h-10 w-[170px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by status"><SelectValue placeholder="All statuses" /></SelectTrigger>
               <SelectContent><SelectItem value="all">All statuses</SelectItem>{FILTERS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>

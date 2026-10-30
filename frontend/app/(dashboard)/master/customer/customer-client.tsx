@@ -130,7 +130,7 @@ function DocsPanel({
 }) {
   const [newDoc, setNewDoc] = useState("");
   const ds = docState(c),
-    req = requiredDocs(c);
+    req = [...requiredDocs(c.type), ...c.customDocs];
   const today = () => new Date().toISOString().slice(0, 10);
 
   const upload = (type: string, f: File) => {
@@ -168,7 +168,7 @@ function DocsPanel({
     const name = newDoc.trim();
     if (
       !name ||
-      requiredDocs(c).some((t) => t.toLowerCase() === name.toLowerCase())
+      [...requiredDocs(c.type), ...c.customDocs].some((t) => t.toLowerCase() === name.toLowerCase())
     )
       return;
     onChange((x) => ({
@@ -614,7 +614,7 @@ export default function CustomerMasterPage() {
               className="h-10 rounded-lg border-slate-200 bg-white pl-10 focus-visible:ring-indigo-600"
             />
           </div>
-          <Select value={typeF} onValueChange={setTypeF}>
+          <Select value={typeF || null} onValueChange={(value) => setTypeF(value ?? "")}>
             <SelectTrigger className="h-10 w-[160px] rounded-lg border-slate-200 bg-white text-slate-600">
               <SelectValue placeholder="All Types" />
             </SelectTrigger>
@@ -627,7 +627,7 @@ export default function CustomerMasterPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={docF} onValueChange={setDocF}>
+          <Select value={docF || null} onValueChange={(value) => setDocF(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-lg border-slate-200 bg-white text-slate-600">
               <SelectValue placeholder="Doc Status" />
             </SelectTrigger>

@@ -275,11 +275,11 @@ export default function FollowUpsPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search task, name or phone" aria-label="Search tasks" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
           </div>
-          <Select value={scope} onValueChange={setScope}>
+          <Select value={scope || null} onValueChange={(value) => setScope(value ?? "")}>
             <SelectTrigger className="h-10 w-[140px] rounded-xl border-slate-200 bg-slate-50" aria-label="Scope"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="mine">My tasks</SelectItem><SelectItem value="team">Whole team</SelectItem></SelectContent>
           </Select>
-          <Select value={type} onValueChange={setType}>
+          <Select value={type || null} onValueChange={(value) => setType(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by type"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All types</SelectItem>{TYPES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>

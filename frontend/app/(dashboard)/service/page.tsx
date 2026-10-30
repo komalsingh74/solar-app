@@ -200,7 +200,7 @@ export default function ServicePage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by ticket, customer or issue" aria-label="Search complaints" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
           </div>
-          <Select value={filter} onValueChange={setFilter}>
+          <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All complaints</SelectItem>{FILTERS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>

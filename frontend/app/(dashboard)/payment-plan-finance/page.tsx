@@ -216,7 +216,7 @@ export default function PaymentsPage() {
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by customer, project or phone" aria-label="Search payments" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
             </div>
-            <Select value={filter} onValueChange={setFilter}>
+            <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
               <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by status"><SelectValue placeholder="All statuses" /></SelectTrigger>
               <SelectContent><SelectItem value="all">All statuses</SelectItem>{FILTERS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>

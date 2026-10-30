@@ -368,15 +368,15 @@ export default function LeadsPage() {
           <p className="mt-0.5 text-xs text-slate-500">Track and manage your solar leads from enquiry to conversion.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={stage} onValueChange={filter(setStage)}>
+          <Select value={stage || null} onValueChange={(value) => filter(setStage)(value ?? "")}>
             <SelectTrigger className={`${triggerCls} w-[130px]`} aria-label="Filter by stage"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All Stages</SelectItem>{STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={source} onValueChange={filter(setSource)}>
+          <Select value={source || null} onValueChange={(value) => filter(setSource)(value ?? "")}>
             <SelectTrigger className={`${triggerCls} w-[130px]`} aria-label="Filter by source"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All Sources</SelectItem>{sources.map((item) => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={emp} onValueChange={filter(setEmp)}>
+          <Select value={emp || null} onValueChange={(value) => filter(setEmp)(value ?? "")}>
             <SelectTrigger className={`${triggerCls} w-[150px]`} aria-label="Filter by employee"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All Employees</SelectItem>{staff.map((item) => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}</SelectContent>
           </Select>

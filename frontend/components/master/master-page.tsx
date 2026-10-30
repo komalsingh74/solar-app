@@ -163,7 +163,7 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
       if (cur && !opts.includes(cur)) opts.push(cur);
       return (
         <FieldBox key={f.key} className={span} label={f.label}>
-          <Select value={cur} onValueChange={(v) => set(f.key, v)}>
+          <Select value={cur} onValueChange={(v) => { if (v !== null) set(f.key, v); }}>
             <SelectTrigger className={inputCls}><SelectValue placeholder="Select" /></SelectTrigger>
             <SelectContent>{opts.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
           </Select>
@@ -252,7 +252,7 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={cfg.searchPlaceholder} aria-label="Search" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11 text-sm" />
           </div>
           {cfg.filterKey && (
-            <Select value={filter} onValueChange={setFilter}>
+            <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
               <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50 text-sm" aria-label="Filter"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{cfg.filterAll ?? "All"}</SelectItem>

@@ -48,7 +48,7 @@ export default function PayslipsPage() {
     <div className="!space-y-2">
       <PageHeader title="Payslips" subtitle="Payslips generated from finalized payroll. View, print or save as PDF.">
         {months.length > 0 && (
-          <Select value={month} onValueChange={setPick}>
+          <Select value={month || null} onValueChange={(value) => setPick(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-white" aria-label="Month"><SelectValue /></SelectTrigger>
             <SelectContent>{months.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}</SelectContent>
           </Select>

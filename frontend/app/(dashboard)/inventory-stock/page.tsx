@@ -24,7 +24,7 @@ type WarehouseOption = { id: string; name: string };
 type ProjectOption = { id: string; name: string };
 type Item = { id: string; name: string; sku: string; category: string; unit: string; min: number; qty: Record<string, number> };
 type Move = { id: string; date: string; type: string; item: string; qty: number; from: string; to: string; ref: string; by: string };
-type Draft = { type: string; item: string; qty: string; from: string; to: string; projectId: string; ref: string; date: string };
+type Draft = { type: string; item: string; qty: string; from: string; to: string; projectId: string | null; ref: string; date: string };
 const blank = (type = "Received", items: Item[] = [], warehouses: WarehouseOption[] = []): Draft => ({
   type, item: items[0]?.id ?? "", qty: "", from: warehouses[0]?.id ?? "",
   to: warehouses.find((warehouse) => warehouse.name.toLowerCase().includes("site"))?.id ?? warehouses[0]?.id ?? "",
@@ -211,7 +211,7 @@ export default function InventoryPage() {
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tab === "stock" || tab === "warehouses" ? "Search by item, SKU or location" : "Search by item, reference or person"} aria-label="Search" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
             </div>
-            {filterOptions.length > 0 && <Select value={filter} onValueChange={setFilter}>
+            {filterOptions.length > 0 && <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
               <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{filterLabel}</SelectItem>
@@ -279,7 +279,7 @@ export default function InventoryPage() {
             {avail !== null && item && <p className="mt-1.5 text-sm text-muted-foreground">Available in {draft.from}: {avail} {item.unit}</p>}
           </div>
           {(draft.type === "Received" || draft.type === "Transfer") && <TextField className="sm:col-span-2" label={draft.type === "Received" ? "PO / supplier reference" : "Reference"} value={draft.ref} onChange={set("ref")} placeholder={draft.type === "Received" ? "PO-2026-031 · Sunrise Solar" : "Transfer note"} />}
-          {(draft.type === "Issued" || draft.type === "Returned") && <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold">Solar project</label><Select value={draft.projectId} onValueChange={(projectId) => { const project = projects.find((entry) => entry.id === projectId); setDraft((current) => ({ ...current, projectId, ref: project?.name ?? current.ref })); }}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Select project" /></SelectTrigger><SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></div>}
+          {(draft.type === "Issued" || draft.type === "Returned") && <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold">Solar project</label><Select value={draft.projectId || null} onValueChange={(projectId) => { const project = projects.find((entry) => entry.id === projectId); setDraft((current) => ({ ...current, projectId: projectId ?? "", ref: project?.name ?? current.ref })); }}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Select project" /></SelectTrigger><SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></div>}
           <TextField label="Date" type="date" value={draft.date} onChange={set("date")} />
           <p className="text-sm text-muted-foreground sm:col-span-2">Movement is recorded under your signed-in account.</p>
         </div>

@@ -61,7 +61,7 @@ export default function PayrollPage() {
     <div className="!space-y-2">
       <PageHeader title="Payroll" subtitle="Monthly salary run from attendance, salary structure, advances and incentives.">
         <div className="flex flex-wrap items-center gap-3">
-          <Select value={month} onValueChange={setMonth}>
+          <Select value={month || null} onValueChange={(value) => setMonth(value ?? "")}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-white" aria-label="Payroll month"><SelectValue /></SelectTrigger>
             <SelectContent>{[0, -1, -2].map((o) => <SelectItem key={o} value={monthKey(o)}>{monthLabel(monthKey(o))}</SelectItem>)}</SelectContent>
           </Select>

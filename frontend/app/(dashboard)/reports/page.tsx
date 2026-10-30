@@ -490,7 +490,7 @@ export default function ReportsPage() {
     <div className="!space-y-3">
       <PageHeader title="Reports & analytics" subtitle="Owner MIS · one click overview of sales, projects, finance, inventory, team and service.">
         <div className="flex flex-wrap gap-2">
-          <Select value={period} onValueChange={setPeriod}>
+          <Select value={period || null} onValueChange={(value) => setPeriod(value ?? "")}>
             <SelectTrigger className="h-10 w-[170px] rounded-xl border-slate-200 bg-white" aria-label="Period"><SelectValue /></SelectTrigger>
             <SelectContent>{Object.entries(PERIODS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
           </Select>

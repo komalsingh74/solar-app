@@ -611,15 +611,15 @@ export default function SiteSurveysPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => resetPage(setQ)(e.target.value)} placeholder="Search by ID, customer, phone or address" aria-label="Search surveys" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
           </div>
-          <Select value={status} onValueChange={resetPage(setStatus)}>
+          <Select value={status || null} onValueChange={(value) => resetPage(setStatus)(value ?? "")}>
             <SelectTrigger className="h-10 w-[160px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by status"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All statuses</SelectItem>{STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={engineer} onValueChange={resetPage(setEngineer)}>
+          <Select value={engineer || null} onValueChange={(value) => resetPage(setEngineer)(value ?? "")}>
             <SelectTrigger className="h-10 w-[170px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by engineer"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All engineers</SelectItem>{engineers.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={sort} onValueChange={setSort}>
+          <Select value={sort || null} onValueChange={(value) => setSort(value ?? "")}>
             <SelectTrigger className="h-10 w-[170px] rounded-xl border-slate-200 bg-slate-50" aria-label="Sort surveys"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="newest">Visit: newest first</SelectItem>

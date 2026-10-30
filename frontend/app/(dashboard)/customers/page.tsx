@@ -68,7 +68,7 @@ export default function CustomersPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by customer, phone or city" aria-label="Search customers" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11" />
           </div>
-          <Select value={stage} onValueChange={setStage}>
+          <Select value={stage || null} onValueChange={(value) => setStage(value ?? "")}>
             <SelectTrigger className="h-10 w-[190px] rounded-xl border-slate-200 bg-slate-50" aria-label="Lifecycle stage"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All stages</SelectItem>{LIFECYCLE.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
           </Select>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, type ComponentProps, type ReactNode } from "react";
+import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -27,9 +28,9 @@ export function Panel({ className = "", children }: { className?: string; childr
 export function StatCard({ icon, value, label }: { icon: ReactNode; value: ReactNode; label: string }) {
   return <Panel className="flex min-h-[96px] items-center gap-4 p-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600">{icon}</span><div className="min-w-0"><p className="truncate text-xl font-bold tracking-tight">{value}</p><p className="text-sm text-muted-foreground">{label}</p></div></Panel>;
 }
-export function StatusBadge({ tone = "slate", children }: { tone?: Tone; children: ReactNode }) { return <Badge variant="outline" className={tones[tone]}>{children}</Badge>; }
-export function Chip({ children }: { children: ReactNode }) { return <Badge variant="secondary" className="bg-indigo-50 font-medium text-indigo-700 hover:bg-indigo-50">{children}</Badge>; }
-export function Avatar({ name }: { name: string }) { const initials = name.trim().split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); return <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-slate-900 text-xs font-bold text-white">{initials}</span>; }
+export function StatusBadge({ tone = "slate", className, children }: { tone?: Tone; className?: string; children: ReactNode }) { return <Badge variant="outline" className={cn(tones[tone], className)}>{children}</Badge>; }
+export function Chip({ children, className }: { children: ReactNode; className?: string }) { return <Badge variant="secondary" className={cn("bg-indigo-50 font-medium text-indigo-700 hover:bg-indigo-50", className)}>{children}</Badge>; }
+export function Avatar({ name, className }: { name: string; className?: string }) { const initials = name.trim().split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); return <span className={cn("grid h-10 w-10 flex-none place-items-center rounded-xl bg-slate-900 text-xs font-bold text-white", className)}>{initials}</span>; }
 export function KV({ label, children }: { label: string; children: ReactNode }) { return <div data-slot="detail-kv" className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/60 p-2.5"><p className="text-[11px] font-medium text-slate-400">{label}</p><p className="mt-0.5 break-words text-xs font-semibold text-slate-800">{children}</p></div>; }
 export const tabsListCls = "mb-6 grid h-10 w-full grid-cols-3 rounded-full border-0 bg-slate-100 p-1";
 export const tabCls = "rounded-full border-0 text-sm text-slate-600 shadow-none outline-none focus-visible:ring-0 focus-visible:outline-none data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm";
