@@ -1,0 +1,9 @@
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { StatusBadge, type Tone } from "@/components/ui/page-layout";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { displayDate, displayDuration, type CallLog } from "@/components/calls-ivr/types";
+
+const statusTone: Record<CallLog["status"], Tone> = { answered: "green", completed: "green", missed: "red", "no-answer": "red", busy: "amber", ringing: "indigo", failed: "slate" };
+export default function CallTable({ calls }: { calls: CallLog[] }) {
+  return <div className="overflow-x-auto"><Table><TableHeader className="bg-slate-50/70"><TableRow>{["Caller / number", "Direction", "Date & time", "Duration", "IVR choice", "Status"].map((label) => <TableHead key={label} className="whitespace-nowrap px-4 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</TableHead>)}</TableRow></TableHeader><TableBody>{calls.map((call) => <TableRow key={call._id}><TableCell className="px-4 py-3"><p className="font-semibold">{call.from}</p><p className="text-xs text-muted-foreground">{call.providerCallId}</p></TableCell><TableCell className="px-4"><span className="inline-flex items-center gap-1.5 text-sm">{call.direction === "inbound" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}{call.direction}</span></TableCell><TableCell className="whitespace-nowrap px-4 text-sm">{displayDate(call.startedAt)}</TableCell><TableCell className="whitespace-nowrap px-4 text-sm">{displayDuration(call.durationSeconds || 0)}</TableCell><TableCell className="px-4 text-sm">{call.ivrChoice || "—"}</TableCell><TableCell className="px-4"><StatusBadge tone={statusTone[call.status]}>{call.status}</StatusBadge></TableCell></TableRow>)}{calls.length === 0 && <TableRow><TableCell colSpan={6} className="py-12 text-center text-muted-foreground">No calls found for these filters.</TableCell></TableRow>}</TableBody></Table></div>;
+}

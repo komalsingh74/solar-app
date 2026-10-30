@@ -1,0 +1,20 @@
+export type CallLog = {
+  _id: string;
+  providerCallId: string;
+  direction: "inbound" | "outbound";
+  from: string;
+  to: string;
+  normalizedFrom: string;
+  status: "ringing" | "answered" | "missed" | "busy" | "failed" | "completed" | "no-answer";
+  startedAt: string;
+  durationSeconds: number;
+  ivrChoice?: string;
+  leadId?: string | null;
+  customerId?: string | null;
+};
+export type IvrOption = { digit: string; label: string; prompt: string; destinationType: "department" | "number" | "queue"; destination: string; enabled: boolean };
+export type IvrConfiguration = { name: string; virtualNumber: string; language: string; greeting: string; enabled: boolean; options: IvrOption[]; invalidInput: "replay_once" | "operator" | "hangup"; fallbackNumber: string; businessHours: string };
+export type FollowUp = { _id: string; callLogId: CallLog | string; phone: string; dueAt: string; status: "pending" | "completed" | "cancelled"; linkedTo: "Lead" | "Customer" | "Unknown"; linkedId?: string | null };
+export const isPopulatedCall = (call: CallLog | string): call is CallLog => typeof call !== "string";
+export const displayDate = (date: string) => new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(date));
+export const displayDuration = (seconds: number) => `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
