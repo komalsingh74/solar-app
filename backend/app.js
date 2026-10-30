@@ -44,6 +44,12 @@ app.use(
 app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Solar Panel Management API is running",
+  });
+});
 // API routes
 app.use("/api/health", healthRoutes);
 app.use("/api/webhooks/telephony", telephonyWebhook);

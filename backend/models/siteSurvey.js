@@ -68,7 +68,7 @@ const siteSurveySchema = new Schema(
     visitDate: {
       type: Date,
       required: true,
-      index: true,
+      // index: true,
     },
 
     status: {
@@ -81,7 +81,7 @@ const siteSurveySchema = new Schema(
         "Rescheduled",
       ],
       default: "Scheduled",
-      index: true,
+      // index: true,
     },
 
     // Roof & site details

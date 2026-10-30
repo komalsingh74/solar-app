@@ -125,7 +125,7 @@ source: {
         "Lost",
       ],
       default: "Lead",
-      index: true,
+      // index: true,
     },
 
     // Solar requirements

@@ -242,7 +242,7 @@ const quotationSchema = new Schema(
         "Cancelled",
       ],
       default: "Draft",
-      index: true,
+      // index: true,
     },
 
     sentAt: {
