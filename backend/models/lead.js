@@ -3,63 +3,12 @@ import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
-const followUpSchema = new Schema(
-  {
-    date: {
-      type: Date,
-      required: true,
-    },
-
-    type: {
-      type: String,
-      enum: ["Call", "WhatsApp", "Visit", "Email"],
-      required: true,
-    },
-
-    priority: {
-      type: String,
-      enum: ["Low", "Medium", "High"],
-      default: "Medium",
-    },
-
-    reminder: {
-      type: Boolean,
-      default: false,
-    },
-
-    notes: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    outcome: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    completed: {
-      type: Boolean,
-      default: false,
-    },
-
-    completedAt: {
-      type: Date,
-      default: null,
-    },
-
-    createdBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
-  },
-  { timestamps: true }
-);
-
 const leadSchema = new Schema(
   {
-    // Lead basic details
+    // ==================================
+    // 1. BASIC LEAD DETAILS
+    // ==================================
+
     name: {
       type: String,
       required: true,
@@ -97,21 +46,26 @@ const leadSchema = new Schema(
       default: "",
     },
 
-    // Lead source master reference
-source: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "LeadSource",
-  default: null,
-},
+    // ==================================
+    // 2. LEAD SOURCE & ASSIGNMENT
+    // ==================================
 
-    // Employee responsible for the lead
+    source: {
+      type: Schema.Types.ObjectId,
+      ref: "LeadSource",
+      default: null,
+    },
+
     assignedEmployee: {
       type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
 
-    // Lead pipeline stage
+    // ==================================
+    // 3. LEAD PIPELINE
+    // ==================================
+
     stage: {
       type: String,
       enum: [
@@ -125,10 +79,12 @@ source: {
         "Lost",
       ],
       default: "Lead",
-      // index: true,
     },
 
-    // Solar requirements
+    // ==================================
+    // 4. SOLAR REQUIREMENTS
+    // ==================================
+
     systemSizeKw: {
       type: Number,
       min: 0,
@@ -177,44 +133,10 @@ source: {
       default: "",
     },
 
-    // Upcoming follow-up summary
-    nextFollowUp: {
-      date: {
-        type: Date,
-        default: null,
-      },
+    // ==================================
+    // 5. QUOTATION DETAILS
+    // ==================================
 
-      type: {
-        type: String,
-        enum: ["Call", "WhatsApp", "Visit", "Email"],
-        default: "Call",
-      },
-
-      priority: {
-        type: String,
-        enum: ["Low", "Medium", "High"],
-        default: "Medium",
-      },
-
-      reminder: {
-        type: Boolean,
-        default: false,
-      },
-
-      notes: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-    },
-
-    // Follow-up history
-    followUps: {
-      type: [followUpSchema],
-      default: [],
-    },
-
-    // Separate quotation documents
     quotations: [
       {
         type: Schema.Types.ObjectId,
@@ -222,14 +144,16 @@ source: {
       },
     ],
 
-    // Optional latest quotation amount for quick display
     quotationAmount: {
       type: Number,
       min: 0,
       default: null,
     },
 
-    // Populated after conversion
+    // ==================================
+    // 6. CUSTOMER & PROJECT CONVERSION
+    // ==================================
+
     customerId: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
@@ -247,11 +171,19 @@ source: {
       default: null,
     },
 
+    // ==================================
+    // 7. LOST LEAD DETAILS
+    // ==================================
+
     lostReason: {
       type: String,
       trim: true,
       default: "",
     },
+
+    // ==================================
+    // 8. AUDIT & STATUS
+    // ==================================
 
     createdBy: {
       type: Schema.Types.ObjectId,
@@ -266,15 +198,38 @@ source: {
   },
   {
     timestamps: true,
+    versionKey: false,
   }
 );
 
-// Useful indexes for CRM filtering
+// ==================================
+// INDEXES
+// ==================================
+
+// Pipeline filtering
 leadSchema.index({ stage: 1 });
-leadSchema.index({ assignedEmployee: 1 });
-leadSchema.index({ "nextFollowUp.date": 1 });
+
+// Employee-wise lead filtering
+leadSchema.index({
+  assignedEmployee: 1,
+  stage: 1,
+});
+
+// Search by phone
 leadSchema.index({ phone: 1 });
 
-const Lead = mongoose.model("Lead", leadSchema);
+// Converted customer lookup
+leadSchema.index({ customerId: 1 });
+
+// Latest leads
+leadSchema.index({ createdAt: -1 });
+
+// ==================================
+// MODEL EXPORT
+// ==================================
+
+const Lead =
+  mongoose.models.Lead ||
+  mongoose.model("Lead", leadSchema);
 
 export default Lead;
