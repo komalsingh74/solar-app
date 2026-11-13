@@ -34,15 +34,15 @@ const cfg: MasterConfig = {
   columns: [
     { key: "name", label: "Source", kind: "primary", sub: ["description"] },
     { key: "channel", label: "Channel", kind: "chip" },
-    { key: "leads", label: "Leads" },
-    { key: "converted", label: "Converted" },
+    // { key: "leads", label: "Leads" },
+    // { key: "converted", label: "Converted" },
     { key: "status", label: "Status", kind: "status" },
   ],
   groups: [{
     label: "Details",
     fields: [
       { key: "name", label: "Source name", span: true, required: true, placeholder: "Website" },
-      { key: "channel", label: "Channel", type: "select", options: ["Online", "Offline", "Referral"] },
+      { key: "channel", label: "Channel", type: "select", options: ["Online", "Offline", "Referral", "Other"] },
       { key: "status", label: "Status", type: "select", options: ["Active", "Inactive"] },
       { key: "description", label: "Description", type: "textarea", placeholder: "Where do these leads come from?" },
     ],

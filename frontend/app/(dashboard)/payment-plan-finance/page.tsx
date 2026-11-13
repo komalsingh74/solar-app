@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 /* =====================================================================
    Payments, Plans & Loan — ek hi page
@@ -130,6 +131,12 @@ export default function PaymentsPage() {
     .filter(match)
     .flatMap((a) => calc(a).ms.filter((m) => m.paid < m.amt).map((m) => ({ a, m })))
     .sort((x, y) => x.m.due.localeCompare(y.m.due));
+  const planRows = list.filter(match);
+  const loanRows = list.filter((a) => a.loan && match(a));
+  const paymentPagination = usePagination(rows, { resetKey: `${q}|${filter}` });
+  const planPagination = usePagination(planRows, { resetKey: q });
+  const loanPagination = usePagination(loanRows, { resetKey: q });
+  const installmentPagination = usePagination(installments, { resetKey: q });
   const setP = (k: keyof PayDraft) => (v: string) => setPay((s) => ({ ...s, [k]: v }));
   const setPl = (k: keyof PlanDraft) => (v: string) => setPlan((s) => ({ ...s, [k]: v }));
 
@@ -226,7 +233,7 @@ export default function PaymentsPage() {
               <TableRow>{["Customer", "Order value", "Received", "Outstanding", "Next payment", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((a) => {
+              {paymentPagination.pageItems.map((a) => {
                 const c = calc(a);
                 return (
                   <TableRow key={a.id}>
@@ -263,6 +270,7 @@ export default function PaymentsPage() {
               {rows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">No accounts match. Change the filter.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...paymentPagination.props} itemLabel="payment accounts" />
         </Panel>
       )}
 
@@ -276,12 +284,13 @@ export default function PaymentsPage() {
           </div>
 
           {page === PAGES[1] && (
+            <>
             <Table>
               <TableHeader className="bg-slate-50/70">
                 <TableRow>{["Customer", "Project value", "Plan type", "Payment mode", "Advance", "Loan", "Customer contribution", ""].map((h, i) => <TableHead key={i} className={thCls}>{h}</TableHead>)}</TableRow>
               </TableHeader>
               <TableBody>
-                {list.filter(match).map((a) => {
+                {planPagination.pageItems.map((a) => {
                   const c = calc(a);
                   const loanTotal = c.loanPaid + c.loanDue;
                   const advItem = c.ms.find((m) => m.label === "Advance");
@@ -303,15 +312,18 @@ export default function PaymentsPage() {
                 })}
               </TableBody>
             </Table>
+            <DataPagination {...planPagination.props} itemLabel="payment plans" />
+            </>
           )}
 
           {page === PAGES[2] && (
+            <>
             <Table>
               <TableHeader className="bg-slate-50/70">
                 <TableRow>{["Customer", "Bank / finance", "Application no.", "Loan amount", "Disbursed", "Pending", "Status", ""].map((h, i) => <TableHead key={i} className={thCls}>{h}</TableHead>)}</TableRow>
               </TableHeader>
               <TableBody>
-                {list.filter((a) => a.loan && match(a)).map((a) => {
+                {loanPagination.pageItems.map((a) => {
                   const c = calc(a);
                   return (
                     <TableRow key={a.id}>
@@ -332,15 +344,18 @@ export default function PaymentsPage() {
                 {list.filter((a) => a.loan && match(a)).length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">Koi loan nahi mila.</TableCell></TableRow>}
               </TableBody>
             </Table>
+            <DataPagination {...loanPagination.props} itemLabel="loans" />
+            </>
           )}
 
           {page === PAGES[3] && (
+            <>
             <Table>
               <TableHeader className="bg-slate-50/70">
                 <TableRow>{["Due date", "Customer", "Installment", "Amount", "Paid", "Status", ""].map((h, i) => <TableHead key={i} className={thCls}>{h}</TableHead>)}</TableRow>
               </TableHeader>
               <TableBody>
-                {installments.map(({ a, m }) => {
+                {installmentPagination.pageItems.map(({ a, m }) => {
                   const st = msStatus(m);
                   return (
                     <TableRow key={`${a.id}-${m.label}`}>
@@ -362,6 +377,8 @@ export default function PaymentsPage() {
                 {installments.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">Koi pending installment nahi hai.</TableCell></TableRow>}
               </TableBody>
             </Table>
+            <DataPagination {...installmentPagination.props} itemLabel="installments" />
+            </>
           )}
         </Panel>
       )}

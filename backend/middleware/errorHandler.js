@@ -34,6 +34,14 @@ const errorHandler = (err, req, res, next) => {
     code = "VALIDATION_ERROR";
   }
 
+  if (err.name === "MulterError") {
+    statusCode = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    message = err.code === "LIMIT_FILE_SIZE"
+      ? "The selected file exceeds the 1 MB limit."
+      : "The uploaded file could not be processed.";
+    code = err.code === "LIMIT_FILE_SIZE" ? "FILE_TOO_LARGE" : "INVALID_UPLOAD";
+  }
+
   // MongoDB unique index conflict
   if (err.code === 11000) {
     statusCode = 409;
@@ -57,6 +65,7 @@ const errorHandler = (err, req, res, next) => {
     err.isOperational === true ||
     err.name === "CastError" ||
     err.name === "ValidationError" ||
+    err.name === "MulterError" ||
     err.code === 11000;
 
   // Log internal errors for debugging

@@ -9,9 +9,10 @@ const quotationItemSchema = new Schema(
     item: {
       type: Schema.Types.ObjectId,
       ref: "Item",
-      required: true,
+      default: null,
     },
 
+    // Snapshot of item details at quotation time
     itemName: {
       type: String,
       required: true,
@@ -79,28 +80,26 @@ const quotationItemSchema = new Schema(
 
 const quotationSchema = new Schema(
   {
-    // Unique quotation number across this single-tenant application
+    // Quotation identification
     quotationNumber: {
       type: String,
       required: true,
       trim: true,
     },
 
-    // Customer reference
+    // CRM relationships
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      default: null,
     },
 
-    // Optional CRM lead reference
     lead: {
       type: Schema.Types.ObjectId,
       ref: "Lead",
       default: null,
     },
 
-    // Optional project reference
     project: {
       type: Schema.Types.ObjectId,
       ref: "SolarProject",
@@ -116,8 +115,8 @@ const quotationSchema = new Schema(
 
     phase: {
       type: String,
-      enum: ["Single", "Three"],
-      default: "Single",
+      enum: ["Single phase", "Three phase"],
+      default: "Single phase",
     },
 
     // Validity
@@ -141,8 +140,10 @@ const quotationSchema = new Schema(
     // Quotation items
     items: {
       type: [quotationItemSchema],
+      required: true,
       validate: {
-        validator: (items) => items.length > 0,
+        validator: (items) =>
+          Array.isArray(items) && items.length > 0,
         message: "At least one quotation item is required",
       },
     },
@@ -176,13 +177,6 @@ const quotationSchema = new Schema(
     taxableAmount: {
       type: Number,
       min: 0,
-      default: 0,
-    },
-
-    gstPercent: {
-      type: Number,
-      min: 0,
-      max: 100,
       default: 0,
     },
 
@@ -242,7 +236,6 @@ const quotationSchema = new Schema(
         "Cancelled",
       ],
       default: "Draft",
-      // index: true,
     },
 
     sentAt: {
@@ -255,7 +248,7 @@ const quotationSchema = new Schema(
       default: null,
     },
 
-    // Audit references
+    // Audit fields
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -279,17 +272,55 @@ const quotationSchema = new Schema(
   }
 );
 
-// Quotation numbers are unique across this single-tenant application.
+// At least one CRM reference is required
+quotationSchema.pre("validate", function () {
+  if (!this.customer && !this.lead) {
+    this.invalidate(
+      "customer",
+      "A customer or lead reference is required"
+    );
+  }
+
+  if (
+    this.issueDate &&
+    this.validUntil &&
+    this.validUntil < this.issueDate
+  ) {
+    this.invalidate(
+      "validUntil",
+      "Valid until date cannot be before issue date"
+    );
+  }
+});
+
+// Unique quotation number
 quotationSchema.index(
   { quotationNumber: 1 },
   { unique: true }
 );
 
-// Common CRM queries
-quotationSchema.index({ customer: 1 });
-quotationSchema.index({ lead: 1 });
-quotationSchema.index({ status: 1 });
-quotationSchema.index({ issueDate: -1 });
+// Customer quotation history
+quotationSchema.index({
+  customer: 1,
+  issueDate: -1,
+});
+
+// Lead quotation history
+quotationSchema.index({
+  lead: 1,
+  issueDate: -1,
+});
+
+// Project quotation lookup
+quotationSchema.index({
+  project: 1,
+});
+
+// Quotation dashboard
+quotationSchema.index({
+  status: 1,
+  issueDate: -1,
+});
 
 const Quotation =
   mongoose.models.Quotation ||

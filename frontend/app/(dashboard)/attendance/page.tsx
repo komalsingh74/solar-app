@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const MARKS: [string, string][] = [["P", "Present"], ["H", "Half day"], ["A", "Absent"], ["L", "Leave"]];
 const attTone: Record<string, Tone> = { P: "green", H: "amber", A: "red", L: "indigo", U: "red", W: "slate", "": "slate" };
@@ -29,6 +30,9 @@ export default function AttendancePage() {
   const active = s.employees.filter((e) => e.status === "Active");
   const departments = [...new Set(active.map((e) => e.dept).filter(Boolean))];
   const todayEmployees = department === "all" ? active : active.filter((e) => e.dept === department);
+  const todayPagination = usePagination(todayEmployees, { resetKey: `${today}|${department}` });
+  const monthPagination = usePagination(active, { resetKey: month });
+  const leavePagination = usePagination(s.leaves);
   const todayMarks = todayEmployees.map((e) => attOf(s, e, today));
   const mark = (id: number, v: string) => update((st) => ({ ...st, att: { ...st.att, [`${today}|${id}`]: v } }));
   const markAll = () => update((st) => { const att = { ...st.att }; todayEmployees.forEach((e) => { if (!att[`${today}|${e.id}`]) att[`${today}|${e.id}`] = "P"; }); return { ...st, att }; });
@@ -110,7 +114,7 @@ export default function AttendancePage() {
             <Table>
               <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Shift", "Status", "Mark attendance"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
               <TableBody>
-                {todayEmployees.map((e) => { const a = attOf(s, e, today); return (
+                {todayPagination.pageItems.map((e) => { const a = attOf(s, e, today); return (
                   <TableRow key={e.id}>
                     <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><div><p className="font-semibold">{e.name}</p><p className="text-sm text-muted-foreground">{e.dept}</p></div></div></TableCell>
                     <TableCell className="px-4">{e.shift}</TableCell>
@@ -120,14 +124,16 @@ export default function AttendancePage() {
                 ); })}
               </TableBody>
             </Table>
+            <DataPagination {...todayPagination.props} itemLabel="employees" />
           </>
         )}
 
         {tab === "month" && (
+          <>
           <Table>
             <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Present", "Half", "Absent", "Leave", "Unpaid", "LOP days", "Attendance"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
             <TableBody>
-              {active.map((e) => { const m = monthAtt(s, e, month); const worked = m.P + m.H + m.L + m.A + m.U + m.H; const pct = worked ? Math.round(((m.P + m.H * 0.5 + m.L) / (m.P + m.H + m.L + m.A + m.U || 1)) * 100) : 0; return (
+              {monthPagination.pageItems.map((e) => { const m = monthAtt(s, e, month); const worked = m.P + m.H + m.L + m.A + m.U + m.H; const pct = worked ? Math.round(((m.P + m.H * 0.5 + m.L) / (m.P + m.H + m.L + m.A + m.U || 1)) * 100) : 0; return (
                 <TableRow key={e.id}>
                   <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><span className="font-semibold">{e.name}</span></div></TableCell>
                   <TableCell className="px-4">{m.P}</TableCell><TableCell className="px-4">{m.H}</TableCell><TableCell className="px-4">{m.A}</TableCell><TableCell className="px-4">{m.L}</TableCell><TableCell className="px-4">{m.U}</TableCell>
@@ -137,6 +143,8 @@ export default function AttendancePage() {
               ); })}
             </TableBody>
           </Table>
+          <DataPagination {...monthPagination.props} itemLabel="employees" />
+          </>
         )}
 
         {tab === "leave" && (
@@ -144,7 +152,7 @@ export default function AttendancePage() {
             <Table>
               <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Type", "Dates", "Days", "Reason", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow></TableHeader>
               <TableBody>
-                {s.leaves.map((l) => (
+                {leavePagination.pageItems.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell className="px-4 py-3 font-semibold">{name(l.empId)}</TableCell>
                     <TableCell className="px-4"><Chip>{l.type}</Chip></TableCell>
@@ -158,6 +166,7 @@ export default function AttendancePage() {
                 {s.leaves.length === 0 && <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">No leave requests.</TableCell></TableRow>}
               </TableBody>
             </Table>
+            <DataPagination {...leavePagination.props} itemLabel="leave requests" />
             <div className="px-4">
               <p className="mb-2 text-sm font-semibold">Leave balance (days left this year)</p>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

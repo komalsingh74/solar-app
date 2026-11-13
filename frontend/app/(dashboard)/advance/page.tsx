@@ -9,6 +9,7 @@ import { Banknote, MinusCircle, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const DED_TYPES = ["Penalty", "Damage / loss", "Other"];
 
@@ -23,6 +24,8 @@ export default function AdvancesPage() {
   const person = (n: string) => s.employees.find((e) => e.name === n);
 
   const open_ = s.advances.filter((a) => a.amount - a.recovered > 0);
+  const advancePagination = usePagination(s.advances);
+  const deductionPagination = usePagination(s.deductions);
   const outstanding = open_.reduce((t, a) => t + (a.amount - a.recovered), 0);
   const emi = open_.reduce((t, a) => t + advanceDue(a), 0);
 
@@ -56,10 +59,11 @@ export default function AdvancesPage() {
           <div className="p-4"><TabsList className={pillList}><TabsTrigger value="adv" className={pillTrig}>Advances</TabsTrigger><TabsTrigger value="ded" className={pillTrig}>One-time deductions</TabsTrigger></TabsList></div>
         </Tabs>
         {tab === "adv" ? (
+          <>
           <Table>
             <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Given", "Amount", "Monthly EMI", "Recovered", "Balance", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
             <TableBody>
-              {s.advances.map((a) => { const bal = a.amount - a.recovered; return (
+              {advancePagination.pageItems.map((a) => { const bal = a.amount - a.recovered; return (
                 <TableRow key={a.id}>
                   <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={name(a.empId)} /><div><p className="font-semibold">{name(a.empId)}</p><p className="text-sm text-muted-foreground">{a.reason || "—"}</p></div></div></TableCell>
                   <TableCell className="px-4">{fmtDate(a.date)}</TableCell><TableCell className="px-4">{inr(a.amount)}</TableCell><TableCell className="px-4">{inr(a.emi)}</TableCell>
@@ -71,11 +75,14 @@ export default function AdvancesPage() {
               {s.advances.length === 0 && <TableRow><TableCell colSpan={7} className="py-12 text-center text-muted-foreground">No advances given.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...advancePagination.props} itemLabel="advances" />
+          </>
         ) : (
+          <>
           <Table>
             <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Month", "Type", "Amount", "Note"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
             <TableBody>
-              {s.deductions.map((x) => (
+              {deductionPagination.pageItems.map((x) => (
                 <TableRow key={x.id}>
                   <TableCell className="px-4 py-3 font-semibold">{name(x.empId)}</TableCell><TableCell className="px-4">{monthLabel(x.month)}</TableCell>
                   <TableCell className="px-4"><StatusBadge tone="amber">{x.type}</StatusBadge></TableCell><TableCell className="px-4 font-semibold">{inr(x.amount)}</TableCell><TableCell className="px-4 text-muted-foreground">{x.note}</TableCell>
@@ -84,6 +91,8 @@ export default function AdvancesPage() {
               {s.deductions.length === 0 && <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">No deductions.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...deductionPagination.props} itemLabel="deductions" />
+          </>
         )}
       </Panel>
 

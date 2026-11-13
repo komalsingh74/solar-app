@@ -1,11 +1,11 @@
 import Sequence from "../models/Sequence.js";
 
-const nextSequence = async (prefix) => {
+const nextSequence = async (prefix, sequenceKey = prefix) => {
   const year = new Date().getFullYear();
   const sequence = await Sequence.findOneAndUpdate(
-    { _id: `${prefix}-${year}` },
+    { _id: `${sequenceKey}-${year}` },
     { $inc: { value: 1 } },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   );
   return `${prefix.toUpperCase()}-${year}-${String(sequence.value).padStart(5, "0")}`;
 };

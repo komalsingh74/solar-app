@@ -28,6 +28,11 @@ schema. Lead-source counts are calculated from active CRM leads, with `Won`
 stages reported as conversions. Customer records referenced by leads or
 quotations, lead sources referenced by leads, and items referenced by
 quotations cannot be deleted.
+
+Lead-source names, item SKUs, supplier GSTINs, warehouse names, and expense
+category names are checked globally without case sensitivity. Supplier records
+may omit GSTIN; blank GSTIN values are not treated as duplicates. Normalized
+unique indexes provide database-level protection for these values.
 # Permission setup
 
 Master record permission enforcement is disabled until `MASTER_PERMISSIONS_ENABLED=true`
@@ -35,4 +40,3 @@ is set in the backend environment. While disabled, authenticated active users ca
 access master records without assigned permissions. Enable it after configuring
 user permissions; non-admin users then need the matching resource/action permission.
 Restart the backend after changing this setting.
-

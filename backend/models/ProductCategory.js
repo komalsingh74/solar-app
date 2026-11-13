@@ -8,6 +8,10 @@ const productCategorySchema = new mongoose.Schema(
       trim: true,
       maxlength: [100, "Category name cannot exceed 100 characters"],
     },
+    normalizedName: {
+      type: String,
+      select: false,
+    },
     status: {
       type: String,
       enum: ["Active", "Inactive"],
@@ -27,7 +31,13 @@ const productCategorySchema = new mongoose.Schema(
   { timestamps: true, versionKey: false }
 );
 
-productCategorySchema.index({ categoryName: 1 }, { unique: true });
+productCategorySchema.index(
+  { normalizedName: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { normalizedName: { $type: "string" } },
+  }
+);
 
 const ProductCategory =
   mongoose.models.ProductCategory ||

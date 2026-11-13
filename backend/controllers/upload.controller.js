@@ -1,6 +1,6 @@
 
 import { Readable } from "node:stream";
-import cloudinary from "../config/cloudinary.js";
+import cloudinary, { assertCloudinaryConfigured } from "../config/cloudinary.js";
 
 function uploadBuffer(buffer, options) {
   return new Promise((resolve, reject) => {
@@ -15,7 +15,7 @@ function uploadBuffer(buffer, options) {
       }
     );
 
-    Readable.from(buffer).pipe(stream);
+    Readable.from([buffer]).pipe(stream);
   });
 }
 
@@ -29,18 +29,10 @@ export const uploadImage = async (req, res, next) => {
       });
     }
 
-    // Company ID must come from authenticated user
-    const companyId = req.user?.companyId;
-
-    if (!companyId) {
-      return res.status(403).json({
-        success: false,
-        message: "Company information not found.",
-      });
-    }
+    assertCloudinaryConfigured();
 
     const result = await uploadBuffer(req.file.buffer, {
-      folder: `solar-panel-management/${companyId}/products`,
+      folder: `solar-panel-management/${req.auth.userId}/products`,
       resource_type: "image",
       allowed_formats: ["jpg", "jpeg", "png", "webp"],
       transformation: [

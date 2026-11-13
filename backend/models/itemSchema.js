@@ -16,6 +16,10 @@ const itemSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
     },
+    normalizedSKU: {
+      type: String,
+      select: false,
+    },
 
     hsnCode: {
       type: String,
@@ -83,8 +87,15 @@ const itemSchema = new mongoose.Schema(
   }
 );
 
-// SKUs are unique across this single-tenant application.
+// Keep the display SKU unique and protect normalized values against case variants.
 itemSchema.index({ sku: 1 }, { unique: true });
+itemSchema.index(
+  { normalizedSKU: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { normalizedSKU: { $type: "string" } },
+  }
+);
 
 // Common filters
 itemSchema.index({ categoryId: 1 });

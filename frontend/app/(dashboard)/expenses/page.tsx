@@ -18,6 +18,9 @@ import {
   FolderKanban,
 } from "lucide-react";
 import { PageHeader, Panel, StatCard } from "@/components/ui/page-layout";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import Loader from "@/components/common/Loader";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 /* ---------- Types ---------- */
 
@@ -173,6 +176,7 @@ export default function ExpensesPage() {
     if (!q) return true;
     return [e.title, e.paidTo, e.project, e.id].some((v) => v.toLowerCase().includes(q));
   });
+  const pagination = usePagination(visible, { resetKey: `${tab}|${category}|${query}` });
 
   const setStatus = async (id: string, status: Status) => {
     try {
@@ -211,7 +215,6 @@ export default function ExpensesPage() {
           </button>
       </PageHeader>
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-4 text-sm text-slate-500">Loading expenses...</Panel>}
 
       {/* Summary cards */}
       <section className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -326,7 +329,8 @@ export default function ExpensesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visible.map((e) => {
+              {loading && visible.length === 0 && <tr><td colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></td></tr>}
+              {pagination.pageItems.map((e) => {
                 const cat = categories.find((c) => c.name === e.category);
                 return (
                   <tr key={e.id} className="transition hover:bg-slate-50/60">
@@ -394,7 +398,7 @@ export default function ExpensesPage() {
             </tbody>
           </table>
 
-          {visible.length === 0 && (
+          {!loading && visible.length === 0 && (
             <div className="px-6 py-14 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                 <Receipt size={22} />
@@ -405,10 +409,7 @@ export default function ExpensesPage() {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4 text-xs text-slate-400 sm:px-6">
-          <span>Showing {visible.length} of {expenses.length} expenses</span>
-          <span>{loading ? "Loading…" : "Live records"}</span>
-        </div>
+        <DataPagination {...pagination.props} itemLabel="expenses" />
       </Panel>
 
       {open && (
@@ -567,7 +568,7 @@ function AddExpenseDialog({
             disabled={!valid || saving}
             className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Save expense"}
+            {saving ? <Loader type="inline" size="sm" text="Saving expense..." className="!text-white" /> : "Save expense"}
           </button>
         </div>
       </form>

@@ -110,7 +110,7 @@ export const advancePurchaseOrder = asyncHandler(async (req, res) => {
   const updated = await PurchaseOrder.findOneAndUpdate(
     { _id: item._id, stage: item.stage, isActive: true },
     { $set: { stage: nextStage, updatedBy: req.auth.userId, ...(nextStage === "Paid" ? { paidAt: new Date() } : {}) } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!updated) throw new AppError("Purchase order changed; reload and try again", 409, "ORDER_CONFLICT");
 
@@ -143,7 +143,7 @@ export const deletePurchaseOrder = asyncHandler(async (req, res) => {
   const item = await PurchaseOrder.findOneAndUpdate(
     { _id: req.params.id, isActive: true, stage: "Draft" },
     { $set: { isActive: false, updatedBy: req.auth.userId } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!item) throw new AppError("Only draft purchase orders can be deleted", 409, "ORDER_NOT_DELETABLE");
   res.json({ success: true, data: { id: item._id } });

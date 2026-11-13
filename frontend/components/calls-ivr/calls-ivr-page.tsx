@@ -11,10 +11,11 @@ import IvrSettings from "@/components/calls-ivr/sections/ivr-settings";
 const sections = [
   { id: "dashboard", label: "Call Dashboard" },
   { id: "logs", label: "Call Logs" },
-  { id: "ivr", label: "IVR Configuration" },
+  // { id: "ivr", label: "IVR Configuration" },
   { id: "follow-ups", label: "Missed Call Follow-ups" },
-  { id: "mapping", label: "Call-to-Lead Mapping" },
-  { id: "settings", label: "IVR Settings" },
+  // { id: "mapping", label: "Call-to-Lead Mapping" },
+  // { id: "settings", label: "IVR Settings" },
+   { id: "settings", label: "Exotel Setup" },
 ];
 
 export default function CallsIvrPage({ section = "dashboard" }: { section?: string }) {

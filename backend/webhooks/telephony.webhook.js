@@ -9,6 +9,7 @@ import TelephonyConnection from "../models/TelephonyConnection.js";
 import { findPhoneMatch } from "../controllers/call.controller.js";
 import { normalizePhone, verifyWebhookSignature } from "../services/telephony/provider.service.js";
 import AppError from "../utils/AppError.js";
+import normalizeValue from "../utils/normalizeValue.js";
 
 const router = Router();
 const statuses = new Set(["ringing", "answered", "missed", "busy", "failed", "completed", "no-answer"]);
@@ -31,7 +32,16 @@ router.post("/events", async (req, res, next) => {
       if (ivr?.createLeadForUnknown) {
         const assigned = await User.findOne({ status: "Active", role: { $in: ["Admin", "SalesExecutive"] } }).sort({ role: 1 }).select("_id").lean();
         if (assigned) {
-          const source = await LeadSource.findOneAndUpdate({ sourceName: "Inbound call" }, { $setOnInsert: { sourceName: "Inbound call", channel: "Online", status: "Active" } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+          const sourceName = "Inbound call";
+          const normalizedSourceName = normalizeValue(sourceName);
+          const source = await LeadSource.findOneAndUpdate(
+            { sourceName: new RegExp(`^${sourceName}$`, "i") },
+            {
+              $set: { normalizedSourceName },
+              $setOnInsert: { sourceName, channel: "Online", status: "Active" },
+            },
+            { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
+          );
           const callerName = typeof event.callerName === "string" ? event.callerName.trim().slice(0, 100) : "";
           const lead = await Lead.create({ name: callerName || `Inbound caller ${normalizedFrom.slice(-4)}`, phone: from, source: source._id, assignedEmployee: assigned._id, createdBy: assigned._id, additionalNotes: `Created from inbound telephony call ${providerCallId}` });
           match = { type: "Lead", id: lead._id };
@@ -52,14 +62,14 @@ router.post("/events", async (req, res, next) => {
     const call = await CallLog.findOneAndUpdate(
       { provider: connection.provider, providerCallId },
       { $set: set, $setOnInsert: { provider: connection.provider, providerCallId } },
-      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true },
     );
     if (direction === "inbound" && ["missed", "no-answer", "busy"].includes(status)) {
       const callbackAssignee = match?.assignedTo || (await User.findOne({ status: "Active", role: { $in: ["Admin", "SalesExecutive"] } }).sort({ role: 1 }).select("_id").lean())?._id || null;
       await FollowUp.findOneAndUpdate(
         { callLogId: call._id },
         { $setOnInsert: { callLogId: call._id, phone: from, assignedTo: callbackAssignee, dueAt: new Date(Date.now() + 15 * 60_000), linkedTo: match?.type || "Unknown", linkedId: match?.id || null, notes: "Callback missed inbound call" } },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
+        { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
       );
     }
     res.status(202).json({ success: true, data: { callId: call.id } });

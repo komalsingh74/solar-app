@@ -11,6 +11,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const earnings = (x: Slip): [string, number][] => [["Basic", x.basic], ["House rent allowance", x.hra], ["Conveyance", x.conv], ["Special allowance", x.special], ["Incentive", x.incentive]];
 const deductions = (x: Slip): [string, number][] => [["Provident fund", x.pf], ["ESI", x.esi], ["Professional tax", x.pt], ["Salary advance", x.advance], ["Other deductions", x.other]];
@@ -41,6 +42,7 @@ export default function PayslipsPage() {
   const [pick, setPick] = useState("");
   const month = months.includes(pick) ? pick : months[0];
   const slips = month ? s.payroll[month].slips : [];
+  const pagination = usePagination(slips, { resetKey: month });
   const [viewId, setViewId] = useState<number | null>(null);
   const view = slips.find((x) => x.empId === viewId);
 
@@ -73,7 +75,7 @@ export default function PayslipsPage() {
             <Table>
               <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Paid days", "Earnings", "Deductions", "Net pay"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow></TableHeader>
               <TableBody>
-                {slips.map((x) => (
+                {pagination.pageItems.map((x) => (
                   <TableRow key={x.empId}>
                     <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={x.name} /><div><p className="font-semibold">{x.name}</p><p className="text-sm text-muted-foreground">{x.code} · {x.designation}</p></div></div></TableCell>
                     <TableCell className="px-4">{x.paidDays} / {x.days}</TableCell>
@@ -88,6 +90,7 @@ export default function PayslipsPage() {
                 ))}
               </TableBody>
             </Table>
+            <DataPagination {...pagination.props} itemLabel="payslips" />
           </Panel>
         </>
       )}

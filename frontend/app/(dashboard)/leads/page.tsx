@@ -4,7 +4,7 @@ import { AreaField, KV, SelectField, TextField, tabCls, tabsListCls } from "@/co
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  ArrowRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
+  ArrowRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2,
   FileText, Home, MapPin, MessageCircle, MoreVertical, Pencil, Phone, Plus, Sun, User, Users, Eye, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import api from "@/lib/api";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination from "@/components/common/data-pagination";
+import Loader from "@/components/common/Loader";
 
 /* ───────────────────────── data ───────────────────────── */
 
@@ -214,6 +217,7 @@ export default function LeadsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [selId, setSelId] = useState("");
 
@@ -264,11 +268,9 @@ export default function LeadsPage() {
       (!l.followUp || ((!from || l.followUp.slice(0, 10) >= from) && (!to || l.followUp.slice(0, 10) <= to)))),
     [leads, stage, source, emp, from, to],
   );
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const cur = Math.min(page, pages);
-  const pageRows = rows.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
-  const startPage = Math.max(1, Math.min(cur - 2, pages - 4));
-  const pageNums = Array.from({ length: Math.min(5, pages) }, (_, i) => startPage + i);
+  const pageRows = rows.slice((cur - 1) * pageSize, cur * pageSize);
   const sel = leads.find((l) => l.id === selId) ?? leads[0];
 
   const allPicked = pageRows.length > 0 && pageRows.every((l) => picked.has(l.id));
@@ -420,7 +422,7 @@ export default function LeadsPage() {
                 <button className="text-slate-500 hover:text-slate-800" onClick={() => setPicked(new Set())}>Clear</button>
               </div>
             ) : (
-              <p className="text-xs text-slate-500">Showing {rows.length ? (cur - 1) * PAGE_SIZE + 1 : 0}–{Math.min(cur * PAGE_SIZE, rows.length)} of {rows.length} leads</p>
+              <p className="text-xs text-slate-500">{rows.length} leads</p>
             )}
           </div>
 
@@ -434,7 +436,7 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading && leads.length === 0 && <tr><td colSpan={9} className="py-14 text-center text-sm text-slate-500">Loading leads...</td></tr>}
+                {loading && pageRows.length === 0 && <tr><td colSpan={9} className="p-0"><TableSkeleton rows={5} columns={9} embedded /></td></tr>}
                 {pageRows.map((l) => (
                   <tr key={l.id} onClick={() => setSelId(l.id)} className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/70 ${l.id === sel?.id ? "bg-indigo-50/50" : ""}`}>
                     <td className="py-2.5 pl-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`Select ${l.name}`} className="h-4 w-4 accent-indigo-600" checked={picked.has(l.id)} onChange={() => toggleOne(l.id)} /></td>
@@ -457,18 +459,19 @@ export default function LeadsPage() {
                     <td className="px-3 text-center"><RowMenu lead={l} onView={() => setView(l)} onEdit={() => openForm(l)} onDelete={() => void removeLead(l)} /></td>
                   </tr>
                 ))}
-                {pageRows.length === 0 && <tr><td colSpan={9} className="py-14 text-center text-sm text-slate-500">No leads match these filters. Change a filter or add a new lead.</td></tr>}
+                {!loading && pageRows.length === 0 && <tr><td colSpan={9} className="py-14 text-center text-sm text-slate-500">No leads match these filters. Change a filter or add a new lead.</td></tr>}
               </tbody>
             </table>
           </div>
 
-          <div className="flex items-center justify-center gap-1 border-t border-slate-100 py-3">
-            <button aria-label="Previous page" disabled={cur === 1} onClick={() => setPage(cur - 1)} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-40"><ChevronLeft size={15} /></button>
-            {pageNums.map((n) => (
-              <button key={n} aria-current={n === cur ? "page" : undefined} onClick={() => setPage(n)} className={`grid h-7 w-7 place-items-center rounded-lg text-xs font-medium ${n === cur ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{n}</button>
-            ))}
-            <button aria-label="Next page" disabled={cur === pages} onClick={() => setPage(cur + 1)} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-40"><ChevronRight size={15} /></button>
-          </div>
+          <DataPagination
+            page={cur}
+            pageSize={pageSize}
+            totalItems={rows.length}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            itemLabel="leads"
+          />
         </section>
 
         {/* ── Right column ── */}
@@ -617,7 +620,7 @@ export default function LeadsPage() {
             {invalid && <span className="text-xs text-muted-foreground sm:mr-auto">{draft.stage === "Lost" && !draft.lostReason ? "Choose a lost reason." : "Name and phone are required."}</span>}
             <div className="flex gap-2">
               <Button variant="outline" className="h-9 flex-1 rounded-xl border-slate-200 px-3 sm:flex-none" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button className="h-9 flex-1 rounded-xl bg-slate-950 px-3 text-white hover:bg-slate-800 sm:flex-none" disabled={invalid || saving} onClick={() => void save()}>{saving ? "Saving..." : "Save lead"}</Button>
+              <Button className="h-9 flex-1 rounded-xl bg-slate-950 px-3 text-white hover:bg-slate-800 sm:flex-none" disabled={invalid || saving} onClick={() => void save()}>{saving ? <Loader type="inline" size="sm" text="Saving lead..." className="!text-white" /> : "Save lead"}</Button>
             </div>
           </SheetFooter>
         </SheetContent>

@@ -1,23 +1,27 @@
 
 import multer from "multer";
+import AppError from "../utils/AppError.js";
 
-const upload = multer({
+const createUpload = (allowedTypes, errorMessage) => multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB
+    fileSize: 1 * 1024 * 1024,
     files: 1,
   },
   fileFilter(req, file, cb) {
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-
-    if (!allowed.includes(file.mimetype)) {
-      return cb(
-        new Error("Only JPG, PNG and WEBP images are allowed.")
-      );
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new AppError(errorMessage, 400, "INVALID_FILE_TYPE"));
     }
-
     cb(null, true);
   },
 });
 
-export { upload };
+const upload = createUpload(
+  ["image/jpeg", "image/png", "image/webp"],
+  "Only JPG, PNG and WEBP images are allowed.",
+);
+const documentUpload = createUpload([
+  "image/jpeg", "image/png", "image/webp", "application/pdf",
+], "Only JPG, PNG, WEBP images and PDF documents are allowed.");
+
+export { upload, documentUpload };

@@ -9,6 +9,7 @@ import { Clock, Eye, Pencil, Plus, Timer, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hours = (s: Shift) => { const [a, b] = [s.start, s.end].map((t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))); return ((b - a) / 60).toFixed(1).replace(".0", ""); };
@@ -28,6 +29,7 @@ export default function ShiftsPage() {
     setOpen(false);
   };
   const active = s.employees.filter((e) => e.status === "Active");
+  const rosterPagination = usePagination(active);
   const setShift = (id: number, shift: string) => update((st) => ({ ...st, employees: st.employees.map((e) => (e.id === id ? { ...e, shift } : e)) }));
 
   return (
@@ -62,7 +64,7 @@ export default function ShiftsPage() {
         <Table>
           <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Department", "Weekly off", "Timing", "Shift"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
           <TableBody>
-            {active.map((e) => { const sh = s.shifts.find((x) => x.name === e.shift); return (
+            {rosterPagination.pageItems.map((e) => { const sh = s.shifts.find((x) => x.name === e.shift); return (
               <TableRow key={e.id}>
                 <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><span className="font-semibold">{e.name}</span></div></TableCell>
                 <TableCell className="px-4"><Chip>{e.dept}</Chip></TableCell>
@@ -78,6 +80,7 @@ export default function ShiftsPage() {
             ); })}
           </TableBody>
         </Table>
+        <DataPagination {...rosterPagination.props} itemLabel="employees" />
       </Panel>
 
       <SideSheet open={open} onOpenChange={setOpen} title={draft.id ? "Edit shift" : "New shift"} description="Timings, weekly off and how late is too late." error={error} saveLabel="Save shift" onSave={save}>

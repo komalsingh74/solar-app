@@ -29,7 +29,7 @@ export const saveConfiguration = asyncHandler(async (req, res) => {
     updatedBy: req.auth.userId,
   };
   if (patch.enabled && (!patch.greeting || !options.some((option) => option.enabled !== false))) throw new AppError("An active IVR needs a greeting and at least one enabled menu option", 400, "INCOMPLETE_IVR");
-  const configuration = await IvrConfiguration.findOneAndUpdate({}, { $set: patch }, { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true });
+  const configuration = await IvrConfiguration.findOneAndUpdate({}, { $set: patch }, { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true });
   res.json({ success: true, data: { configuration } });
 });
 
@@ -61,7 +61,7 @@ export const saveProviderSettings = asyncHandler(async (req, res) => {
   const patch = { provider: provider.trim(), accountId: accountId.trim() || existing?.accountId, healthUrl: parsedHealthUrl, virtualNumber: virtualNumber.trim().slice(0, 40), updatedBy: req.auth.userId };
   if (authToken.trim()) patch.authTokenEncrypted = encryptSecret(authToken.trim());
   if (webhookSecret.trim()) patch.webhookSecretEncrypted = encryptSecret(webhookSecret.trim());
-  const connection = await TelephonyConnection.findOneAndUpdate({}, { $set: patch }, { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }).select("provider accountId healthUrl virtualNumber");
+  const connection = await TelephonyConnection.findOneAndUpdate({}, { $set: patch }, { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }).select("provider accountId healthUrl virtualNumber");
   res.json({ success: true, message: "Provider credentials encrypted and saved", data: { provider: connection.provider, accountId: formattedAccountId(connection.accountId), healthUrl: connection.healthUrl, virtualNumber: connection.virtualNumber } });
 });
 
@@ -72,6 +72,6 @@ export const getMappingSettings = asyncHandler(async (req, res) => {
 
 export const saveMappingSettings = asyncHandler(async (req, res) => {
   if (typeof req.body?.createLeadForUnknown !== "boolean") throw new AppError("createLeadForUnknown must be a boolean", 400, "INVALID_MAPPING_SETTING");
-  const configuration = await IvrConfiguration.findOneAndUpdate({}, { $set: { createLeadForUnknown: req.body.createLeadForUnknown, updatedBy: req.auth.userId } }, { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }).select("createLeadForUnknown");
+  const configuration = await IvrConfiguration.findOneAndUpdate({}, { $set: { createLeadForUnknown: req.body.createLeadForUnknown, updatedBy: req.auth.userId } }, { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }).select("createLeadForUnknown");
   res.json({ success: true, data: { createLeadForUnknown: configuration.createLeadForUnknown } });
 });

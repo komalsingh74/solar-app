@@ -7,6 +7,7 @@ import { HardHat, Pencil, Plus, Trash2, Truck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import api from "@/lib/api";
+import Loader from "@/components/common/Loader";
 
 const STATUS = ["Available", "On site", "On leave"];
 const statusTone: Record<string, Tone> = { Available: "green", "On site": "indigo", "On leave": "amber" };
@@ -109,14 +110,17 @@ export default function InstallationTeamPage() {
         <Button size="lg" className={darkBtn} onClick={openNew}><Plus /> Add crew</Button>
       </PageHeader>
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-5 text-sm text-muted-foreground">Loading installation teams…</Panel>}
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard icon={<HardHat size={24} />} value={teams.filter((team) => team.status === "On site").length} label="Crews on site" />
         <StatCard icon={<Truck size={24} />} value={teams.filter((team) => team.status === "Available").length} label="Crews available" />
         <StatCard icon={<Zap size={24} />} value={`${teams.reduce((total, team) => total + team.kwMonth, 0)} kW`} label="Installed this month" />
       </div>
       <div className="grid gap-2 lg:grid-cols-2">
-        {teams.map((team) => {
+        {loading && teams.length === 0 ? (
+          <div className="flex justify-center py-12 lg:col-span-2">
+            <Loader type="inline" text="Loading installation teams..." />
+          </div>
+        ) : teams.map((team) => {
           const pool = team.kwMonth * team.rate;
           return (
             <Panel key={team.id} className="p-5">
@@ -150,7 +154,7 @@ export default function InstallationTeamPage() {
       </div>
       <p className="text-sm text-muted-foreground">Incentive pool = installed kW × rate per kW; the displayed member share is an equal estimate.</p>
 
-      <SideSheet open={open} onOpenChange={setOpen} title={draft.id ? "Update crew" : "New crew"} description="Choose active users, the crew lead, and a project assignment." error={error} saveLabel={saving ? "Saving…" : "Save crew"} onSave={save}>
+      <SideSheet open={open} onOpenChange={setOpen} title={draft.id ? "Update crew" : "New crew"} description="Choose active users, the crew lead, and a project assignment." error={error} busy={saving} saveLabel="Save crew" onSave={save}>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField label="Crew name" value={draft.name} onChange={set("name")} placeholder="Team C" />
           <div className="grid gap-2"><label className="text-sm font-semibold">Status</label><Select value={draft.status} onValueChange={(value) => set("status")(value ?? "")}><SelectTrigger className="h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{STATUS.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></div>

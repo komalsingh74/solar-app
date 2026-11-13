@@ -6,13 +6,28 @@ import api from "@/lib/api";
 import { showError } from "@/lib/toast";
 
 export const ME = "Sumit Saxena";
-export const TYPES = ["Residential", "Commercial", "Industrial"];
+export const TYPES = ["Residential", "Commercial", "Industrial","Government", "Mixed"];
 export const DISCOMS = ["DVVNL", "PVVNL", "MVVNL", "PuVVNL", "KESCO", "Other"];
 export const ROOFS = ["RCC", "Tin shed", "Asbestos", "Ground mount"];
 export const OWNERS = ["Rohit Sharma", "Neha Verma", "Imran Khan"];
 export const STAGES = ["Survey approved", "Material dispatched", "Structure", "Panels mounted", "Wiring & inverter", "Net-meter & inspection", "Commissioned"];
 
-export type DocRec = { type: string; file: string; status: "Pending" | "Verified" | "Rejected"; on: string; by: string };
+export type DocRec = {
+  type: string;
+  file: string;
+  status: "Pending" | "Verified" | "Rejected";
+  on: string;
+  by: string;
+  fileUrl?: string;
+  downloadUrl?: string;
+  publicId?: string;
+  resourceType?: "image" | "raw" | "";
+  accessType?: "upload" | "authenticated" | "";
+  format?: string;
+  documentId?: string;
+  mimeType?: string;
+  fileSize?: number;
+};
 export type Project = { code: string; kw: number; stage: string; engineer: string; crew: string; target: string };
 export type Quote = { no: string; date: string; amount: number; status: "Sent" | "Accepted" | "Rejected" };
 export type Pay = { date: string; amount: number; mode: string; ref: string };
@@ -60,7 +75,6 @@ let customerApiError = "";
 let customerLoad: Promise<void> | null = null;
 let customerMutationQueue: Promise<void> = Promise.resolve();
 const subs = new Set<() => void>();
-export const blobs = new Map<string, string>();
 
 const normalizeCustomer = (value: Partial<Customer>, index: number): Customer => ({
   ...base,
@@ -130,6 +144,15 @@ const apiToCustomer = (record: Record<string, unknown>, existing: Customer | und
       status: document.status === "Verified" || document.status === "Rejected" ? document.status : "Pending",
       on: dateOnly(document.uploadedAt),
       by: existing?.updatedBy ?? ME,
+      fileUrl: String(document.fileUrl ?? ""),
+      downloadUrl: String(document.downloadUrl ?? ""),
+      publicId: String(document.publicId ?? ""),
+      resourceType: document.resourceType === "raw" ? "raw" : document.resourceType === "image" ? "image" : "",
+      accessType: document.accessType === "authenticated" ? "authenticated" : document.accessType === "upload" ? "upload" : "",
+      format: String(document.format ?? ""),
+      documentId: String(document._id ?? ""),
+      mimeType: String(document.mimeType ?? ""),
+      fileSize: Number(document.fileSize ?? 0),
     })),
     customDocs: Array.isArray(record.customDocumentTypes)
       ? record.customDocumentTypes.filter((value): value is string => typeof value === "string")
@@ -182,6 +205,14 @@ const customerToApi = (customer: Customer) => ({
     documentName: document.type,
     documentType: apiDocumentType(document.type),
     originalFileName: document.file,
+    fileUrl: document.fileUrl ?? "",
+    downloadUrl: document.downloadUrl ?? "",
+    publicId: document.publicId ?? "",
+    resourceType: document.resourceType ?? "",
+    accessType: document.accessType ?? "",
+    format: document.format ?? "",
+    mimeType: document.mimeType ?? "",
+    fileSize: document.fileSize ?? null,
     status: document.status,
     uploadedAt: document.on ? new Date(document.on).toISOString() : null,
   })),
@@ -238,6 +269,58 @@ const persistCustomer = async (customer: Customer) => {
   const saved = response.data?.data?.item as Record<string, unknown> | undefined;
   if (!saved) throw new Error("The server did not return the saved customer.");
   return apiToCustomer(saved, customer, 0);
+};
+
+export const getCustomerById = async (customer: Customer) => {
+  if (!customer.apiId) throw new Error("Cannot load an unsaved customer.");
+  const response = await api.get(`/masters/customers/${customer.apiId}`);
+  const record = response.data?.data?.item;
+  if (!record || typeof record !== "object") {
+    throw new Error("The server returned an invalid customer record.");
+  }
+  return apiToCustomer(record as Record<string, unknown>, customer, 0);
+};
+
+export const uploadCustomerDocument = (
+  customer: Customer,
+  documentName: string,
+  file: File,
+): Promise<DocRec> => {
+  if (!customer.apiId) return Promise.reject(new Error("Save the customer before uploading documents."));
+
+  const mutation = customerMutationQueue.then(async () => {
+    const formData = new FormData();
+    formData.append("documentName", documentName);
+    formData.append("document", file);
+    const response = await api.post(
+      `/masters/customers/${customer.apiId}/documents`,
+      formData,
+    );
+    const record = response.data?.data?.item;
+    if (!record || typeof record !== "object") {
+      throw new Error("The server did not return the updated customer.");
+    }
+
+    const updatedCustomer = apiToCustomer(
+      record as Record<string, unknown>,
+      customer,
+      0,
+    );
+    state = {
+      ...state,
+      customers: state.customers.map((entry) =>
+        entry.id === customer.id ? updatedCustomer : entry
+      ),
+    };
+    customerApiError = "";
+    subs.forEach((notify) => notify());
+
+    const uploaded = updatedCustomer.docs.find((document) => document.type === documentName);
+    if (!uploaded) throw new Error("The server did not save the uploaded document.");
+    return uploaded;
+  });
+  customerMutationQueue = mutation.then(() => undefined, () => undefined);
+  return mutation;
 };
 
 const deleteCustomer = async (customer: Customer) => {

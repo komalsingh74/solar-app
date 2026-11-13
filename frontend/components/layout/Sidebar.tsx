@@ -46,6 +46,7 @@ const groups = [
     items: [
       { label: "Leads", href: "/leads", icon: Users },
        { label: "Follow-ups / My Tasks", href: "/follow-ups-my-task", icon: CalendarCheck },
+       { label: "Site Surveys", href: "/site-survey", icon: PanelsTopLeft },
       { label: "Quotations", href: "/quotations", icon: FileText },
       { label: "Customers", href: "/customers", icon: UserRound },
       { label: "Calls & IVR", href: "/calls-ivr", icon: PhoneCall },
@@ -55,7 +56,7 @@ const groups = [
   {
     title: "Project Operations",
     items: [
-      { label: "Site Surveys", href: "/site-survey", icon: PanelsTopLeft },
+      
       { label: "Solar Projects", href: "/projects", icon: Sun },
       { label: "Subsidy & Net Metering", href: "/subsidy", icon: FileText },
       { label: "Installation Team", href: "/installation-team", icon: Users },

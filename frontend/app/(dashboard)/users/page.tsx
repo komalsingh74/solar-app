@@ -15,7 +15,6 @@ import {
   SearchBox,
   StatCard,
   StatGrid,
-  TableFooter,
   TableToolbar,
   Tabs,
   TODAY,
@@ -24,6 +23,7 @@ import {
   inputCls,
   type Tone,
 } from "@/components/erp/erp-ui";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 /* ---------- config & sample data (replace with API) ---------- */
 
@@ -105,6 +105,7 @@ export default function UsersPage() {
     const q = query.trim().toLowerCase();
     return !q || [u.name, u.email, u.phone, u.id].some((v) => v.toLowerCase().includes(q));
   });
+  const pagination = usePagination(visible, { resetKey: `${tab}|${status}|${query}` });
 
   const tabs = [
     { key: "all" as const, label: "All", count: users.length },
@@ -170,7 +171,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visible.map((u) => {
+              {pagination.pageItems.map((u) => {
                 const locked = isLocked(u);
                 return (
                   <tr key={u.id} className="transition hover:bg-slate-50/60">
@@ -221,7 +222,7 @@ export default function UsersPage() {
           </table>
           {visible.length === 0 && <EmptyState icon={Users} title="No users found" text="Change the role, status or search." />}
         </div>
-        <TableFooter shown={visible.length} total={users.length} />
+        <DataPagination {...pagination.props} itemLabel="users" />
       </Card>
 
       {dialog && (

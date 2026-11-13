@@ -35,6 +35,10 @@ const supplierSchema = new mongoose.Schema(
       uppercase: true,
       default: "",
     },
+    normalizedGSTIN: {
+      type: String,
+      select: false,
+    },
 
     // Supplies entered as comma-separated values in the UI
     supplies: {
@@ -94,6 +98,15 @@ const supplierSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
+  }
+);
+
+// Supplier GSTINs are unique after normalization; blank GSTINs are not indexed.
+supplierSchema.index(
+  { normalizedGSTIN: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { normalizedGSTIN: { $type: "string" } },
   }
 );
 

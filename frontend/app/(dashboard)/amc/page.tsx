@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import Loader from "@/components/common/Loader";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 import { Plus, ShieldCheck, RefreshCw, Banknote, CalendarClock, Wrench, Pencil, Trash2 } from "lucide-react";
 import {
   Avatar,
@@ -17,7 +20,6 @@ import {
   SearchBox,
   StatCard,
   StatGrid,
-  TableFooter,
   TableToolbar,
   Tabs,
   TODAY,
@@ -161,6 +163,8 @@ export default function AmcPage() {
   const q = query.trim().toLowerCase();
   const amcRows = amcs.filter((a) => !q || [a.id, a.customer, a.plan].some((v) => v.toLowerCase().includes(q)));
   const warrantyRows = warranties.filter((w) => !q || [w.customer, w.item, w.brand, w.serial].some((v) => v.toLowerCase().includes(q)));
+  const amcPagination = usePagination(amcRows, { resetKey: q });
+  const warrantyPagination = usePagination(warrantyRows, { resetKey: q });
 
   const logVisit = async (id: string) => {
     const contract = amcs.find((item) => item.id === id);
@@ -218,7 +222,6 @@ export default function AmcPage() {
           : <Btn variant="primary" icon={Plus} onClick={() => { setEditingWarranty(null); setWarrantyOpen(true); }}>Register warranty</Btn>}
       />
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Card className="p-4 text-sm text-slate-500">Loading service records...</Card>}
 
       <StatGrid>
         <StatCard dark label="Active AMC contracts" value={String(active.length)} sub={`${amcs.length} contracts in total`} icon={ShieldCheck} />
@@ -256,7 +259,8 @@ export default function AmcPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {amcRows.map((a) => {
+                  {loading && amcRows.length === 0 && <tr><td colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></td></tr>}
+                  {amcPagination.pageItems.map((a) => {
                     const st = amcStatus(a);
                     const needsRenewal = st.tone !== "emerald";
                     return (
@@ -305,9 +309,9 @@ export default function AmcPage() {
                   })}
                 </tbody>
               </table>
-              {amcRows.length === 0 && <EmptyState icon={ShieldCheck} title="No contracts found" text="Try a different search or add a new AMC contract." />}
+              {!loading && amcRows.length === 0 && <EmptyState icon={ShieldCheck} title="No contracts found" text="Try a different search or add a new AMC contract." />}
             </div>
-            <TableFooter shown={amcRows.length} total={amcs.length} />
+            <DataPagination {...amcPagination.props} itemLabel="AMC contracts" />
           </>
         ) : (
           <>
@@ -325,7 +329,8 @@ export default function AmcPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {warrantyRows.map((w) => {
+                  {loading && warrantyRows.length === 0 && <tr><td colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></td></tr>}
+                  {warrantyPagination.pageItems.map((w) => {
                     const s = warrantyStatus(w);
                     return (
                       <tr key={w.id} className="transition hover:bg-slate-50/60">
@@ -355,9 +360,9 @@ export default function AmcPage() {
                   })}
                 </tbody>
               </table>
-              {warrantyRows.length === 0 && <EmptyState icon={ShieldCheck} title="No equipment found" text="Try a different search." />}
+              {!loading && warrantyRows.length === 0 && <EmptyState icon={ShieldCheck} title="No equipment found" text="Try a different search." />}
             </div>
-            <TableFooter shown={warrantyRows.length} total={warranties.length} />
+            <DataPagination {...warrantyPagination.props} itemLabel="warranties" />
           </>
         )}
       </Card>
@@ -445,7 +450,7 @@ function NewAmc({ projects, contract, onClose, onSave }: {
     <Modal
       title={contract ? `Edit ${contract.id}` : "New AMC contract"}
       desc="Select a project and define the contract dates, fee, and annual visit allowance."
-      submitLabel={saving ? "Saving..." : contract ? "Save changes" : "Save contract"}
+      submitLabel={saving ? <Loader type="inline" size="sm" text="Saving contract..." className="!text-white" /> : contract ? "Save changes" : "Save contract"}
       disabled={!valid || saving}
       onClose={onClose}
       onSubmit={() => void submit()}
@@ -525,7 +530,7 @@ function WarrantyForm({ customers, projects, warranty, onClose, onSave }: {
     <Modal
       title={warranty ? `Edit ${warranty.id}` : "Register equipment warranty"}
       desc="Record equipment serial, installation date, and warranty duration."
-      submitLabel={saving ? "Saving..." : warranty ? "Save changes" : "Register warranty"}
+      submitLabel={saving ? <Loader type="inline" size="sm" text="Saving warranty..." className="!text-white" /> : warranty ? "Save changes" : "Register warranty"}
       disabled={!valid || saving}
       onClose={onClose}
       onSubmit={() => void submit()}

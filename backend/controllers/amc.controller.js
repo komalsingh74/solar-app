@@ -116,7 +116,7 @@ export const renewAmcContract = asyncHandler(async (req, res) => {
 
 export const deleteAmcContract = asyncHandler(async (req, res) => {
   if (!validId(req.params.id)) throw new AppError("Invalid AMC contract ID", 400, "INVALID_ID");
-  const item = await AmcContract.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { new: true });
+  const item = await AmcContract.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { returnDocument: "after" });
   if (!item) throw new AppError("AMC contract not found", 404, "AMC_NOT_FOUND");
   res.json({ success: true, data: { id: item._id } });
 });

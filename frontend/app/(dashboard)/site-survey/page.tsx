@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/lib/api";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination from "@/components/common/data-pagination";
 
 const STATUSES = ["Scheduled", "Completed", "Rescheduled", "Cancelled"];
 const ROOFS = ["RCC", "Metal Sheet", "Tiled", "Asbestos", "Ground Mount", "Other"];
@@ -376,6 +378,7 @@ export default function SiteSurveysPage() {
   const [sort, setSort] = useState("newest");
   const [tab, setTab] = useState("all");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [draft, setDraft] = useState<Survey>(blank());
   const [formOpen, setFormOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
@@ -447,9 +450,8 @@ export default function SiteSurveysPage() {
     return out;
   }, [list, q, status, engineer, sort, tab, today]);
 
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const pageNo = Math.min(page, pages);
-  const pageRows = rows.slice((pageNo - 1) * PAGE_SIZE, pageNo * PAGE_SIZE);
+  const pageNo = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)));
+  const pageRows = rows.slice((pageNo - 1) * pageSize, pageNo * pageSize);
   const resetPage = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(1); };
 
   const set = (k: keyof Survey) => (v: string) => setDraft((s) => ({ ...s, [k]: v }));
@@ -586,7 +588,6 @@ export default function SiteSurveysPage() {
       </PageHeader>
 
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-5 text-sm text-muted-foreground">Loading site surveys…</Panel>}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={<CalendarCheck size={24} />} value={counts.today} label="Visits today" />
         <StatCard icon={<AlertCircle size={24} />} value={counts.overdue} label="Overdue visits" />
@@ -658,22 +659,22 @@ export default function SiteSurveysPage() {
                 </TableRow>
               );
             })}
-            {rows.length === 0 && <TableRow><TableCell colSpan={9} className="py-14 text-center text-muted-foreground">No surveys match. Change the filter or schedule a new survey.</TableCell></TableRow>}
+            {loading && pageRows.length === 0 && <TableRow><TableCell colSpan={9} className="p-0"><TableSkeleton rows={5} columns={9} embedded /></TableCell></TableRow>}
+            {!loading && rows.length === 0 && <TableRow><TableCell colSpan={9} className="py-14 text-center text-muted-foreground">No surveys match. Change the filter or schedule a new survey.</TableCell></TableRow>}
           </TableBody>
         </Table>
-        {rows.length > PAGE_SIZE && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {(pageNo - 1) * PAGE_SIZE + 1}–{Math.min(pageNo * PAGE_SIZE, rows.length)} of {rows.length}</span>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="rounded-lg" disabled={pageNo <= 1} onClick={() => setPage(pageNo - 1)}><ChevronLeft size={16} /> Previous</Button>
-              <span>Page {pageNo} of {pages}</span>
-              <Button variant="outline" size="sm" className="rounded-lg" disabled={pageNo >= pages} onClick={() => setPage(pageNo + 1)}>Next <ChevronRight size={16} /></Button>
-            </div>
-          </div>
-        )}
+        <DataPagination
+          page={pageNo}
+          pageSize={pageSize}
+          pageSizeOptions={[6, 10, 20, 50]}
+          totalItems={rows.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          itemLabel="surveys"
+        />
       </Panel>
 
-      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? `Edit survey ${draft.code}` : "Schedule survey"} description="Fill the visit, roof, electrical and photo details." error={error} saveLabel={saving ? "Saving…" : "Save survey"} onSave={save}>
+      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? `Edit survey ${draft.code}` : "Schedule survey"} description="Fill the visit, roof, electrical and photo details." error={error} busy={saving} saveLabel="Save survey" onSave={save}>
         <Tabs defaultValue="visit">
           <TabsList className={`${tabsListCls} grid-cols-4`}>
             <TabsTrigger value="visit" className={tabCls}>Visit</TabsTrigger>

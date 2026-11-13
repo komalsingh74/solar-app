@@ -335,7 +335,7 @@ export function Modal({
 }: {
   title: string;
   desc?: string;
-  submitLabel: string;
+  submitLabel: ReactNode;
   disabled?: boolean;
   onClose: () => void;
   onSubmit: () => void;

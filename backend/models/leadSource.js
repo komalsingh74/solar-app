@@ -1,16 +1,28 @@
 
 import mongoose from "mongoose";
 
-const leadSourceSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+const leadSourceSchema = new Schema(
   {
-    // Source name: Website, Facebook Ad, Referral, etc.
+    // ==================================
+    // 1. SOURCE IDENTIFICATION
+    // ==================================
+
     sourceName: {
       type: String,
       required: [true, "Source name is required"],
       trim: true,
     },
+    normalizedSourceName: {
+      type: String,
+      select: false,
+    },
 
-    // Channel
+    // ==================================
+    // 2. SOURCE CHANNEL
+    // ==================================
+
     channel: {
       type: String,
       enum: [
@@ -24,29 +36,38 @@ const leadSourceSchema = new mongoose.Schema(
       default: "Online",
     },
 
-    // Source status
+    // ==================================
+    // 3. STATUS
+    // ==================================
+
     status: {
       type: String,
       enum: ["Active", "Inactive"],
       default: "Active",
     },
 
-    // Description
+    // ==================================
+    // 4. DESCRIPTION
+    // ==================================
+
     description: {
       type: String,
       trim: true,
       default: "",
     },
 
-    // Audit fields
+    // ==================================
+    // 5. AUDIT FIELDS
+    // ==================================
+
     createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
 
     updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
@@ -57,11 +78,27 @@ const leadSourceSchema = new mongoose.Schema(
   }
 );
 
-// Source names are unique across this single-tenant application.
-leadSourceSchema.index({ sourceName: 1 }, { unique: true });
+// ==================================
+// INDEXES
+// ==================================
 
-// Common queries
+leadSourceSchema.index(
+  { normalizedSourceName: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { normalizedSourceName: { $type: "string" } },
+  }
+);
+
+// Active / inactive filtering
 leadSourceSchema.index({ status: 1 });
+
+// Channel filtering
+leadSourceSchema.index({ channel: 1 });
+
+// ==================================
+// MODEL EXPORT
+// ==================================
 
 const LeadSource =
   mongoose.models.LeadSource ||

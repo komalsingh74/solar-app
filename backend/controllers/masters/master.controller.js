@@ -11,6 +11,12 @@ const leadSources = createMasterCrudHandlers({
   Model: LeadSource,
   searchFields: ["sourceName", "channel", "description"],
   fields: ["sourceName", "channel", "status", "description"],
+  duplicate: {
+    field: "sourceName",
+    normalizedField: "normalizedSourceName",
+    format: "lower",
+    message: "A lead source with this name already exists",
+  },
   beforeDelete: async (id) => {
     if (await Lead.exists({ source: id })) {
       throw new AppError("Lead source is used by CRM leads and cannot be deleted", 409, "RESOURCE_IN_USE");
@@ -46,16 +52,34 @@ export const masterHandlers = {
       "supplierName", "contactPerson", "phone", "email", "gstin", "supplies",
       "address", "city", "paymentTerms", "status",
     ],
+    duplicate: {
+      field: "gstin",
+      normalizedField: "normalizedGSTIN",
+      format: "upper",
+      message: "A supplier with this GSTIN already exists",
+    },
   }),
   warehouses: createMasterCrudHandlers({
     Model: Warehouse,
     searchFields: ["locationName", "city", "inCharge", "address"],
     fields: ["locationName", "type", "rackZone", "inCharge", "address", "city", "status"],
+    duplicate: {
+      field: "locationName",
+      normalizedField: "normalizedName",
+      format: "lower",
+      message: "A warehouse with this name already exists",
+    },
   }),
   "expense-categories": createMasterCrudHandlers({
     Model: Category,
     searchFields: ["categoryName", "group", "description"],
     fields: ["categoryName", "group", "monthlyBudget", "receiptRequired", "status", "description"],
+    duplicate: {
+      field: "categoryName",
+      normalizedField: "normalizedName",
+      format: "lower",
+      message: "An expense category with this name already exists",
+    },
   }),
 };
 
@@ -65,6 +89,14 @@ export const listMasterRecords = (resource) => {
     return (req, res, next) => next(new AppError("Unknown master resource", 404, "RESOURCE_NOT_FOUND"));
   }
   return asyncHandler(handlers.list);
+};
+
+export const getMasterRecord = (resource) => {
+  const handlers = masterHandlers[resource];
+  if (!handlers) {
+    return (req, res, next) => next(new AppError("Unknown master resource", 404, "RESOURCE_NOT_FOUND"));
+  }
+  return asyncHandler(handlers.get);
 };
 
 export const createMasterRecord = (resource) => {

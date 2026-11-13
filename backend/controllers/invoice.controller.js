@@ -99,7 +99,7 @@ export const sendInvoice = asyncHandler(async (req, res) => {
   const item = await Invoice.findOneAndUpdate(
     { _id: req.params.id, isActive: true, status: "Draft" },
     { $set: { status: "Sent", updatedBy: req.auth.userId } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!item) throw new AppError("Only draft invoices can be sent", 409, "INVOICE_NOT_SENDABLE");
   const [result] = await includePaidAmounts([await populated(Invoice.findById(item._id)).lean()]);

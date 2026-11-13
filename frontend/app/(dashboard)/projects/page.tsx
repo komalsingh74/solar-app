@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const STAGES = ["Survey approved", "Material dispatched", "Structure", "Panels mounted", "Wiring & inverter", "Net-meter & inspection", "Commissioned"];
 const NET = ["Not applied", "Applied", "Approved", "Installed"];
@@ -88,6 +90,7 @@ export default function ProjectsPage() {
     () => list.filter((p) => (filter === "all" || state(p) === filter) && `${p.code} ${p.customer} ${p.location} ${p.engineer}`.toLowerCase().includes(q.toLowerCase())),
     [list, q, filter],
   );
+  const pagination = usePagination(rows, { resetKey: `${q}|${filter}` });
   const set = (k: keyof Project) => (v: string) => setDraft((s) => ({ ...s, [k]: v }));
   const openForm = (p: Project) => { setDraft({ ...p }); setFormOpen(true); };
   const error = !draft.customerId ? "Select a customer." : !draft.location.trim() ? "Site address is required." : !(Number(draft.kw) > 0) ? "Enter system size in kW." : draft.target < draft.start ? "Target date is before start date." : "";
@@ -143,7 +146,6 @@ export default function ProjectsPage() {
       </PageHeader>
 
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-5 text-sm text-muted-foreground">Loading projects…</Panel>}
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard icon={<Hammer size={24} />} value={list.filter((p) => state(p) !== "Completed").length} label="Active projects" />
         <StatCard icon={<AlertTriangle size={24} />} value={list.filter((p) => state(p) === "Delayed").length} label="Delayed" />
@@ -166,7 +168,7 @@ export default function ProjectsPage() {
             <TableRow>{["Project", "Size", "Site engineer", "Progress", "Target", "Net-meter", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((p) => (
+            {pagination.pageItems.map((p) => (
               <TableRow key={p.id}>
                 <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={p.customer} /><div><p className="font-semibold">{p.customer}</p><p className="text-sm text-muted-foreground">{p.code} · {p.location}</p></div></div></TableCell>
                 <TableCell className="px-4"><Chip>{p.kw} kW</Chip></TableCell>
@@ -185,12 +187,14 @@ export default function ProjectsPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No projects match. Change the filter or add a new project.</TableCell></TableRow>}
+            {loading && rows.length === 0 && <TableRow><TableCell colSpan={8} className="p-0"><TableSkeleton rows={5} columns={8} embedded /></TableCell></TableRow>}
+            {!loading && rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No projects match. Change the filter or add a new project.</TableCell></TableRow>}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="projects" />
       </Panel>
 
-      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit project" : "New project"} description="Site, schedule and approval details." error={error} saveLabel={busy ? "Saving…" : "Save project"} onSave={save}>
+      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit project" : "New project"} description="Site, schedule and approval details." error={error} busy={busy} saveLabel="Save project" onSave={save}>
         <Tabs defaultValue="project">
           <TabsList className={tabsListCls}>
             <TabsTrigger value="project" className={tabCls}>Project</TabsTrigger>

@@ -14,7 +14,6 @@ import {
   SectionTitle,
   StatCard,
   StatGrid,
-  TableFooter,
   TableToolbar,
   TODAY,
   fmtDate,
@@ -24,6 +23,8 @@ import {
 } from "@/components/erp/erp-ui";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 // Purchase flow: PO → Goods received (GRN) → Vendor bill → Paid
 const stages = ["Draft", "Ordered", "Received", "Billed", "Paid"];
@@ -108,6 +109,7 @@ export default function PurchasePage() {
     const q = query.trim().toLowerCase();
     return !q || [o.number, o.supplier, o.items].some((v) => v.toLowerCase().includes(q));
   });
+  const pagination = usePagination(visible, { resetKey: `${stageFilter}|${query}` });
 
   const advance = async (order: PO) => {
     const nextStage = stages[order.stage + 1];
@@ -162,7 +164,6 @@ export default function PurchasePage() {
       />
 
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Card className="p-5 text-sm text-slate-500">Loading purchase orders…</Card>}
       {lowStock.length > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div className="flex items-start gap-3">
@@ -236,7 +237,8 @@ export default function PurchasePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visible.map((o) => (
+              {loading && visible.length === 0 && <tr><td colSpan={6} className="p-0"><TableSkeleton rows={5} columns={6} embedded /></td></tr>}
+              {pagination.pageItems.map((o) => (
                 <tr key={o.id} className="transition hover:bg-slate-50/60">
                   <td className="px-5 py-4 sm:px-6">
                     <p className="font-semibold text-slate-900">{o.number}</p>
@@ -266,9 +268,9 @@ export default function PurchasePage() {
               ))}
             </tbody>
           </table>
-          {visible.length === 0 && <EmptyState icon={ShoppingCart} title="No orders found" text="Change the filter or create a new purchase order." />}
+          {!loading && visible.length === 0 && <EmptyState icon={ShoppingCart} title="No orders found" text="Change the filter or create a new purchase order." />}
         </div>
-        <TableFooter shown={visible.length} total={orders.length} />
+        <DataPagination {...pagination.props} itemLabel="purchase orders" />
       </Card>
 
       {dialog && (

@@ -123,7 +123,7 @@ export const updateServiceTicketStatus = asyncHandler(async (req, res) => {
 
 export const deleteServiceTicket = asyncHandler(async (req, res) => {
   if (!validId(req.params.id)) throw new AppError("Invalid ticket ID", 400, "INVALID_ID");
-  const item = await ServiceTicket.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { new: true });
+  const item = await ServiceTicket.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { returnDocument: "after" });
   if (!item) throw new AppError("Complaint not found", 404, "TICKET_NOT_FOUND");
   res.json({ success: true, data: { id: item._id } });
 });

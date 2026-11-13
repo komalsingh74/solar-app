@@ -34,6 +34,11 @@ const followUpSchema = new Schema(
       default: false,
     },
 
+    reminderAt: {
+      type: Date,
+      default: null,
+    },
+
     // Optional IVR call reference
     callLogId: {
       type: Schema.Types.ObjectId,
@@ -94,7 +99,14 @@ const followUpSchema = new Schema(
       default: null,
     },
 
+    // Audit fields
     createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
@@ -119,6 +131,19 @@ followUpSchema.index({
   dueAt: -1,
 });
 
+// Customer follow-up history
+followUpSchema.index({
+  customerId: 1,
+  dueAt: -1,
+});
+
+// Reminder listing
+followUpSchema.index({
+  reminder: 1,
+  reminderAt: 1,
+  status: 1,
+});
+
 // Prevent duplicate IVR callbacks
 followUpSchema.index(
   { callLogId: 1 },
@@ -130,5 +155,9 @@ followUpSchema.index(
   }
 );
 
-export default mongoose.models.FollowUp ||
+const FollowUp =
+  mongoose.models.FollowUp ||
   mongoose.model("FollowUp", followUpSchema);
+
+export default FollowUp;
+ 

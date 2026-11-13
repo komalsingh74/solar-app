@@ -27,9 +27,10 @@ import {
   ME,
   ROOFS,
   TYPES,
-  blobs,
   docState,
+  getCustomerById,
   requiredDocs,
+  uploadCustomerDocument,
   useCustomers,
   withDoc,
   type Addr,
@@ -37,8 +38,11 @@ import {
   type DocRec,
 } from "@/components/crm/customer-store";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   BadgeCheck,
   Check,
   CheckCircle2,
@@ -76,6 +80,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import TableExportActions from "@/components/layout/TableExportActions";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination from "@/components/common/data-pagination";
+import Loader from "@/components/common/Loader";
+import api from "@/lib/api";
+import { showError, showSuccess } from "@/lib/toast";
 
 const DOC_FILTERS = [
   "Missing documents",
@@ -129,20 +139,59 @@ function DocsPanel({
   onChange: (fn: (c: Customer) => Customer) => void;
 }) {
   const [newDoc, setNewDoc] = useState("");
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState("");
   const ds = docState(c),
     req = [...requiredDocs(c.type), ...c.customDocs];
   const today = () => new Date().toISOString().slice(0, 10);
 
-  const upload = (type: string, f: File) => {
-    blobs.set(`${c.id}|${type}`, URL.createObjectURL(f));
-    const rec: DocRec = {
-      type,
-      file: f.name,
-      status: "Pending",
-      on: today(),
-      by: ME,
-    };
-    onChange((x) => withDoc(x, type, rec, `${type} uploaded`));
+  const upload = async (type: string, file: File) => {
+    setUploading(type);
+    setUploadError("");
+    try {
+      const rec = await uploadCustomerDocument(c, type, file);
+      onChange((x) => withDoc(x, type, rec, `${type} uploaded`));
+      showSuccess(`${type} uploaded successfully.`);
+    } catch (error) {
+      const err = error as { userMessage?: string; message?: string };
+      setUploadError(err.userMessage || err.message || `Could not upload ${type}.`);
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const openDocument = async (record: DocRec, download: boolean) => {
+    const previewWindow = download ? null : window.open("about:blank", "_blank");
+    if (!download && !previewWindow) {
+      showError("Allow pop-ups to preview this document.");
+      return;
+    }
+
+    try {
+      let url = record.fileUrl ?? "";
+      if (c.apiId && record.documentId && record.publicId) {
+        const response = await api.get(
+          `/masters/customers/${c.apiId}/documents/${record.documentId}/content`,
+          { params: download ? { download: "true" } : undefined, responseType: "blob" },
+        );
+        url = URL.createObjectURL(response.data as Blob);
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+
+      if (!url) throw new Error("This document is not available for preview or download.");
+      if (download) {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = record.file;
+        anchor.click();
+      } else if (previewWindow) {
+        previewWindow.location.href = url;
+      }
+    } catch (error) {
+      previewWindow?.close();
+      const err = error as { userMessage?: string; message?: string };
+      setUploadError(err.userMessage || err.message || "Could not open this document.");
+    }
   };
 
   const decide = (rec: DocRec, status: DocRec["status"]) =>
@@ -154,15 +203,6 @@ function DocsPanel({
         `${rec.type} ${status.toLowerCase()}`,
       ),
     );
-
-  const download = (rec: DocRec) => {
-    const url = blobs.get(`${c.id}|${rec.type}`);
-    if (!url) return;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = rec.file;
-    a.click();
-  };
 
   const addDocType = () => {
     const name = newDoc.trim();
@@ -196,22 +236,28 @@ function DocsPanel({
     }));
 
   return (
-    <div className="space-y-6">
-      {/* Header Area */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
-        <div className="flex items-center gap-3">
-          <StatusBadge tone={docTone[ds.status]}>{ds.status}</StatusBadge>
-          <span className="text-sm font-medium text-slate-600">
-            {ds.missing} document(s) pending
-          </span>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/80 p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100"><FileText size={20} /></div>
+            <div><h3 className="text-sm font-semibold text-slate-900">Customer documents</h3><p className="mt-0.5 text-xs text-slate-500">Track, review, and manage required files</p></div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600"><span className="font-semibold text-slate-900">{ds.have}</span> of {ds.total} uploaded</span>
+            <StatusBadge tone={docTone[ds.status]}>{ds.status}</StatusBadge>
+          </div>
         </div>
-        <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">
-          Required for {c.type}
-        </span>
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+          <span>{ds.missing ? `${ds.missing} document${ds.missing === 1 ? "" : "s"} still needed` : "All required documents are uploaded"}</span>
+          <span className="font-medium text-slate-600">{c.type} customer</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${ds.total ? Math.min(100, (ds.have / ds.total) * 100) : 0}%` }} /></div>
       </div>
 
-      {/* Add Custom Doc */}
-      <div className="flex gap-2">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3"><p className="text-sm font-semibold text-slate-900">Request another document</p><p className="mt-0.5 text-xs text-slate-500">Add a custom requirement to this customer’s checklist.</p></div>
+        <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           value={newDoc}
           onChange={(e) => setNewDoc(e.target.value)}
@@ -221,34 +267,36 @@ function DocsPanel({
               addDocType();
             }
           }}
-          placeholder="Request custom document..."
+          placeholder="e.g. Cancelled cheque"
+          aria-label="Custom document name"
           className="h-10 rounded-lg border-slate-200 bg-white"
         />
         <Button
           type="button"
-          className="rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+          className="h-10 rounded-lg bg-blue-600 text-white hover:bg-blue-700 sm:px-5"
           disabled={!newDoc.trim()}
           onClick={addDocType}
         >
-          <Plus size={16} className="mr-1.5" /> Add
+          <Plus size={16} className="mr-1.5" /> Add document
         </Button>
+        </div>
       </div>
 
-      {/* Document List */}
-      <ul className="space-y-3">
+      {uploadError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{uploadError}</p>}
+      <ul className="space-y-2.5">
         {req.map((t) => {
           const rec = c.docs.find((x) => x.type === t);
           const custom = c.customDocs.includes(t);
-          const has = blobs.has(`${c.id}|${t}`);
+          const has = Boolean(rec?.publicId || rec?.fileUrl);
 
           return (
             <li
               key={t}
-              className="group relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm"
+              className="group relative flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3.5 transition-colors hover:border-blue-200 hover:bg-slate-50/40 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4"
             >
-              <div className="flex items-start gap-3.5">
+              <div className="flex min-w-0 items-start gap-3.5">
                 <div
-                  className={`mt-0.5 rounded-full p-1.5 ${rec?.status === "Verified" ? "bg-green-50 text-green-600" : rec ? "bg-indigo-50 text-indigo-600" : "bg-slate-50 text-slate-400"}`}
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${rec?.status === "Verified" ? "bg-emerald-50 text-emerald-600" : rec?.status === "Rejected" ? "bg-rose-50 text-rose-600" : rec ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-400"}`}
                 >
                   {rec?.status === "Verified" ? (
                     <CheckCircle2 size={18} />
@@ -258,31 +306,31 @@ function DocsPanel({
                     <Circle size={18} />
                   )}
                 </div>
-                <div>
-                  <p className="font-semibold text-slate-900 flex items-center gap-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
                     {t}
                     {custom && (
-                      <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+                      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                         Custom
                       </span>
                     )}
                   </p>
                   {rec ? (
                     <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                      <span className="truncate max-w-[150px]">{rec.file}</span>
+                      <span className="max-w-full truncate font-medium text-slate-600 sm:max-w-[220px]">{rec.file}</span>
                       <span className="text-slate-300">•</span>
                       <span>Uploaded {fmtDate(rec.on)}</span>
                     </div>
                   ) : (
-                    <p className="mt-1 text-xs text-slate-400 font-medium">
-                      Not uploaded yet
+                    <p className="mt-1 text-xs font-medium text-slate-400">
+                      Waiting for upload
                     </p>
                   )}
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-100 pt-3 sm:border-0 sm:pt-0">
                 {rec ? (
                   <StatusBadge tone={dTone[rec.status]}>
                     {rec.status}
@@ -291,18 +339,31 @@ function DocsPanel({
                   <StatusBadge tone="amber">Missing</StatusBadge>
                 )}
 
-                {rec && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 w-8 p-0 rounded-md border-slate-200 text-slate-500"
-                    disabled={!has}
-                    onClick={() => download(rec)}
-                    title="Download"
-                  >
-                    <Download size={14} />
-                  </Button>
+                {rec && has && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 w-9 rounded-lg border-slate-200 bg-white p-0 text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                      title="Preview document"
+                      aria-label={`Preview ${t}`}
+                      onClick={() => void openDocument(rec, false)}
+                    >
+                      <Eye size={14} />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 w-9 rounded-lg border-slate-200 bg-white p-0 text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                      title="Download document"
+                      aria-label={`Download ${t}`}
+                      onClick={() => void openDocument(rec, true)}
+                    >
+                      <Download size={14} />
+                    </Button>
+                  </>
                 )}
 
                 {rec?.status === "Pending" && (
@@ -327,21 +388,21 @@ function DocsPanel({
                   </div>
                 )}
 
-                {rec?.status !== "Pending" && (
-                  <label className={`${buttonVariants({ size: "sm", variant: "outline" })} h-8 cursor-pointer rounded-md border-slate-200 px-3 text-xs`}>
-                      <Upload size={14} className="mr-1.5" />{" "}
-                      {rec ? "Replace" : "Upload"}
+                <label className={`${buttonVariants({ size: "sm" })} h-9 cursor-pointer rounded-lg bg-blue-600 px-3 text-xs text-white shadow-sm hover:bg-blue-700`}>
+                      {uploading === t ? <Loader type="inline" size="sm" text="Uploading..." /> : <><Upload size={14} className="mr-1.5" />{rec ? "Replace" : "Upload"}</>}
                       <input
                         type="file"
                         className="sr-only"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        disabled={!c.apiId || uploading !== null}
                         onChange={(e) => {
                           const f = e.target.files?.[0];
-                          if (f) upload(t, f);
+                          if (f) void upload(t, f);
                           e.target.value = "";
                         }}
                       />
-                  </label>
-                )}
+                </label>
+                {!c.apiId && !rec && <span className="text-xs text-slate-400">Save customer to upload</span>}
 
                 {custom && (
                   <Button
@@ -368,8 +429,18 @@ export default function CustomerMasterPage() {
   const [q, setQ] = useState("");
   const [typeF, setTypeF] = useState("all");
   const [docF, setDocF] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "name",
+    direction: "asc",
+  });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const detailRequestId = useRef(0);
 
   const blank = (): Customer => ({
     id: Date.now(),
@@ -414,7 +485,33 @@ export default function CustomerMasterPage() {
   const [draft, setDraft] = useState<Customer>(blank());
   const [formOpen, setFormOpen] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
-  const view = s.customers.find((c) => c.id === viewId);
+  const selectedView = s.customers.find((c) => c.id === viewId);
+  const view = detailCustomer?.id === viewId ? detailCustomer : null;
+
+  const closeView = () => {
+    detailRequestId.current += 1;
+    setViewId(null);
+    setDetailLoading(false);
+  };
+
+  const openView = async (customer: Customer) => {
+    const requestId = ++detailRequestId.current;
+    setViewId(customer.id);
+    setDetailCustomer(null);
+    setDetailLoading(true);
+    setDetailError("");
+    try {
+      const record = await getCustomerById(customer);
+      if (requestId === detailRequestId.current) setDetailCustomer(record);
+    } catch (error) {
+      const err = error as { userMessage?: string; message?: string };
+      if (requestId === detailRequestId.current) {
+        setDetailError(err.userMessage || err.message || "Could not load customer details.");
+      }
+    } finally {
+      if (requestId === detailRequestId.current) setDetailLoading(false);
+    }
+  };
 
   const rows = useMemo(
     () =>
@@ -428,6 +525,43 @@ export default function CustomerMasterPage() {
       ),
     [s.customers, q, typeF, docF],
   );
+  const sortedRows = useMemo(() => {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+    return [...rows].sort((a, b) => {
+      const getValue = (customer: Customer) => {
+        switch (sort.key) {
+          case "type": return customer.type;
+          case "city": return customer.city;
+          case "documents": return docState(customer).status;
+          case "updatedOn": return customer.updatedOn;
+          default: return customer.name;
+        }
+      };
+      const comparison = collator.compare(String(getValue(a) ?? ""), String(getValue(b) ?? ""));
+      return sort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [rows, sort]);
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const visiblePage = Math.min(page, pageCount);
+  const pageRows = useMemo(
+    () => sortedRows.slice((visiblePage - 1) * pageSize, visiblePage * pageSize),
+    [sortedRows, visiblePage, pageSize],
+  );
+  const exportRows = sortedRows.map((customer) => ({
+    code: customer.code,
+    name: customer.name,
+    type: customer.type,
+    city: customer.city,
+    documentStatus: docState(customer).status,
+    updatedOn: customer.updatedOn,
+  }));
+  const toggleSort = (key: string) => {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+    setPage(1);
+  };
   const states = s.customers.map(docState);
 
   const set = (k: keyof Customer) => (v: string) =>
@@ -437,9 +571,26 @@ export default function CustomerMasterPage() {
     }));
   const setBill = (k: keyof Addr) => (v: string) =>
     setDraft((x) => ({ ...x, billing: { ...x.billing, [k]: v } }));
-  const openForm = (c: Customer) => {
-    setDraft({ ...c, billing: { ...c.billing } });
-    setFormOpen(true);
+  const openForm = async (c: Customer) => {
+    const requestId = ++detailRequestId.current;
+    setDetailError("");
+    setDetailLoading(true);
+    try {
+      if (!c.apiId && s.customers.some((customer) => customer.id === c.id)) {
+        throw new Error("Cannot load this customer because its server ID is missing.");
+      }
+      const customer = c.apiId ? await getCustomerById(c) : c;
+      if (requestId !== detailRequestId.current) return;
+      setDraft({ ...customer, billing: { ...customer.billing } });
+      setFormOpen(true);
+    } catch (error) {
+      const err = error as { userMessage?: string; message?: string };
+      if (requestId === detailRequestId.current) {
+        setDetailError(err.userMessage || err.message || "Could not load customer details.");
+      }
+    } finally {
+      if (requestId === detailRequestId.current) setDetailLoading(false);
+    }
   };
 
   const isNew = !s.customers.some((x) => x.id === draft.id);
@@ -510,7 +661,10 @@ export default function CustomerMasterPage() {
               ),
             },
       );
-      if (saved) setFormOpen(false);
+      if (saved) {
+        setPage(1);
+        setFormOpen(false);
+      }
     } finally {
       setSaving(false);
     }
@@ -530,7 +684,10 @@ export default function CustomerMasterPage() {
         ...st,
         customers: st.customers.filter((entry) => entry.id !== customer.id),
       }));
-      if (removed) setViewId(null);
+      if (removed) {
+        setPage(1);
+        closeView();
+      }
     } finally {
       setDeleting(null);
     }
@@ -557,7 +714,8 @@ export default function CustomerMasterPage() {
 
   return (
     <div className="!space-y-2 text-[14px] font-sans">
-      {storeStatus.error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{storeStatus.error}</p>}
+      {(storeStatus.error || (detailError && !viewId)) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{detailError || storeStatus.error}</p>}
+      {detailLoading && !viewId && <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><Loader type="inline" text="Loading customer details..." /></div>}
       <PageHeader
         title="Customer master"
         subtitle="Manage customer profiles, addresses, KYC documents, and solar connection details."
@@ -609,12 +767,12 @@ export default function CustomerMasterPage() {
             />
             <Input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => { setQ(e.target.value); setPage(1); }}
               placeholder="Search by name, ID, phone or city..."
               className="h-10 rounded-lg border-slate-200 bg-white pl-10 focus-visible:ring-indigo-600"
             />
           </div>
-          <Select value={typeF || null} onValueChange={(value) => setTypeF(value ?? "")}>
+          <Select value={typeF || null} onValueChange={(value) => { setTypeF(value ?? ""); setPage(1); }}>
             <SelectTrigger className="h-10 w-[160px] rounded-lg border-slate-200 bg-white text-slate-600">
               <SelectValue placeholder="All Types" />
             </SelectTrigger>
@@ -627,7 +785,7 @@ export default function CustomerMasterPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={docF || null} onValueChange={(value) => setDocF(value ?? "")}>
+          <Select value={docF || null} onValueChange={(value) => { setDocF(value ?? ""); setPage(1); }}>
             <SelectTrigger className="h-10 w-[180px] rounded-lg border-slate-200 bg-white text-slate-600">
               <SelectValue placeholder="Doc Status" />
             </SelectTrigger>
@@ -640,6 +798,17 @@ export default function CustomerMasterPage() {
               ))}
             </SelectContent>
           </Select>
+          <TableExportActions
+            rows={exportRows}
+            columns={[
+              { key: "code", label: "Customer ID" },
+              { key: "name", label: "Customer" },
+              { key: "type", label: "Type" },
+              { key: "city", label: "City" },
+              { key: "documentStatus", label: "Document status" },
+              { key: "updatedOn", label: "Last updated" },
+            ]}
+          />
         </div>
 
         {/* Table */}
@@ -647,32 +816,31 @@ export default function CustomerMasterPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-white hover:bg-white border-b border-slate-200">
-                <TableHead className="h-12 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Customer
-                </TableHead>
-                <TableHead className="h-12 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Type
-                </TableHead>
-                <TableHead className="h-12 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Location
-                </TableHead>
-                <TableHead className="h-12 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Documents
-                </TableHead>
-                <TableHead className="h-12 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Last Updated
-                </TableHead>
+                {([
+                  ["name", "Customer"],
+                  ["type", "Type"],
+                  ["city", "Location"],
+                  ["documents", "Documents"],
+                  ["updatedOn", "Last Updated"],
+                ] as const).map(([key, label]) => (
+                  <TableHead key={key} className="h-12 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1.5 hover:text-indigo-700" onClick={() => toggleSort(key)}>
+                      {label}
+                      {sort.key !== key ? <ArrowUpDown size={13} /> : sort.direction === "asc" ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+                    </button>
+                  </TableHead>
+                ))}
                 <TableHead className="h-12 px-5"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((c) => {
+              {pageRows.map((c) => {
                 const ds = docState(c);
                 return (
                   <TableRow
                     key={c.id}
                     className="cursor-pointer transition-colors hover:bg-slate-50 group"
-                    onClick={() => setViewId(c.id)}
+                    onClick={() => { void openView(c); }}
                   >
                     <TableCell className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
@@ -731,7 +899,7 @@ export default function CustomerMasterPage() {
                         className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setViewId(c.id);
+                          void openView(c);
                         }}
                       >
                         <Eye size={16} />
@@ -768,7 +936,14 @@ export default function CustomerMasterPage() {
                   </TableRow>
                 );
               })}
-              {rows.length === 0 && (
+              {storeStatus.loading && pageRows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <TableSkeleton rows={5} columns={6} embedded />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!storeStatus.loading && pageRows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={6}
@@ -789,6 +964,14 @@ export default function CustomerMasterPage() {
             </TableBody>
           </Table>
         </div>
+        <DataPagination
+          page={visiblePage}
+          pageSize={pageSize}
+          totalItems={sortedRows.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          itemLabel="customers"
+        />
       </Panel>
 
       {/* ---------- Add / Edit (Side Sheet) ---------- */}
@@ -1004,13 +1187,50 @@ export default function CustomerMasterPage() {
       </SideSheet>
 {/* ---------- View Details Dialog (Centered Modal) ---------- */}
 
+{viewId && !view && (
+  <ViewDialog
+    open
+    onOpenChange={(open) => { if (!open) closeView(); }}
+    title={detailError ? "Unable to load customer details" : "Customer details"}
+    description={detailError ? "The latest customer record could not be fetched." : "Loading the latest record from the server."}
+    footer={
+      <div className="flex w-full justify-between gap-2 border-t border-slate-100 pt-2.5">
+        {detailError && (
+          <Button
+            variant="outline"
+            className="h-8 rounded-md border-slate-200 px-3 text-xs"
+            onClick={() => { if (selectedView) void openView(selectedView); }}
+          >
+            Retry
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          className="ml-auto h-8 rounded-md border-slate-200 px-3 text-xs"
+          onClick={closeView}
+        >
+          Close
+        </Button>
+      </div>
+    }
+  >
+    {detailError ? (
+      <p role="alert" className="py-4 text-sm text-rose-600">{detailError}</p>
+    ) : (
+      <div className="relative min-h-28">
+        <Loader type="overlay" text="Loading customer details..." />
+      </div>
+    )}
+  </ViewDialog>
+)}
+
 {view &&
   (() => {
     const ds = docState(view);
     return (
       <ViewDialog
         open
-        onOpenChange={() => setViewId(null)}
+        onOpenChange={closeView}
         size="sm:max-w-3xl"
         title=""
         description=""
@@ -1023,15 +1243,15 @@ export default function CustomerMasterPage() {
               <Button
                 variant="outline"
                 className="h-8 rounded-md border-slate-200 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => setViewId(null)}
+                onClick={closeView}
               >
                 Close
               </Button>
               <Button
                 className="h-8 rounded-xl bg-slate-950 px-3.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-slate-800"
                 onClick={() => {
-                  setViewId(null);
-                  openForm(view);
+                  closeView();
+                  void openForm(view);
                 }}
               >
                 <Pencil size={13} className="mr-1.5" /> Edit Record

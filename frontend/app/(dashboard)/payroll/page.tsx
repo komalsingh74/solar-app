@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import TableExportActions from "@/components/layout/TableExportActions";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const eligible = (st: Store, month: string) => st.employees.filter((e) => e.status === "Active" && e.joined <= `${month}-${String(daysIn(month)).padStart(2, "0")}`);
 const build = (st: Store, month: string) => {
@@ -26,6 +27,7 @@ export default function PayrollPage() {
   const run = s.payroll[month];
   const locked = Boolean(run?.locked);
   const rows = locked ? run.slips : build(s, month);
+  const pagination = usePagination(rows, { resetKey: month });
   const inProgress = month >= monthKey(0);
 
   const sum = (f: (x: (typeof rows)[number]) => number) => rows.reduce((t, x) => t + f(x), 0);
@@ -84,7 +86,7 @@ export default function PayrollPage() {
         <Table>
           <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Paid days", "Earned", "Incentive", "Deductions", "Net pay"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow></TableHeader>
           <TableBody>
-            {rows.map((x) => {
+            {pagination.pageItems.map((x) => {
               const parts = [x.pf && `PF ${inr(x.pf)}`, x.esi && `ESI ${inr(x.esi)}`, x.pt && `PT ${inr(x.pt)}`, x.advance && `Advance ${inr(x.advance)}`, x.other && `Other ${inr(x.other)}`].filter(Boolean).join(" · ");
               return (
                 <TableRow key={x.empId}>
@@ -113,6 +115,7 @@ export default function PayrollPage() {
             </TableRow>
           </TableFooter>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="payroll records" />
       </Panel>
       {viewSlip && (() => {
         const earnings: [string, number][] = [["Basic", viewSlip.basic], ["HRA", viewSlip.hra], ["Conveyance", viewSlip.conv], ["Special allowance", viewSlip.special], ["Incentive", viewSlip.incentive]];

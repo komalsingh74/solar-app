@@ -6,6 +6,8 @@ import { DetailDialog, SideSheet, d, darkBtn, dayLabel, outBtn, thCls } from "@/
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 import { AlertTriangle, CheckCircle2, Eye, Headset, Pencil, Phone, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +61,7 @@ export default function ServicePage() {
   const [technicians, setTechnicians] = useState<Option[]>([]);
   const [categories, setCategories] = useState<string[]>(CATS);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [now, setNow] = useState(0);
   const [q, setQ] = useState("");
@@ -107,6 +110,7 @@ export default function ServicePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [list, q, filter, now],
   );
+  const pagination = usePagination(rows, { resetKey: `${q}|${filter}` });
 
   const assign = async (id: string, tech: string) => {
     try {
@@ -159,6 +163,8 @@ export default function ServicePage() {
   const error = !draft.customerId ? "Select a customer." : !draft.desc.trim() ? "Describe the problem." : "";
   const save = async () => {
     if (error) return;
+    setSaving(true);
+    setRequestError("");
     try {
       const payload = {
         customerId: draft.customerId, projectId: draft.projectId || null, category: draft.category,
@@ -177,7 +183,7 @@ export default function ServicePage() {
     } catch (reason) {
       const err = reason as { userMessage?: string; message?: string };
       setRequestError(err.userMessage || err.message || "Could not save complaint.");
-    }
+    } finally { setSaving(false); }
   };
 
   return (
@@ -186,7 +192,6 @@ export default function ServicePage() {
         <Button size="lg" className={darkBtn} onClick={() => openForm(blank())}><Plus /> New complaint</Button>
       </PageHeader>
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-4 text-sm text-muted-foreground">Loading service complaints...</Panel>}
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard icon={<Headset size={24} />} value={list.filter((t) => t.status !== "Resolved").length} label="Open complaints" />
@@ -210,7 +215,7 @@ export default function ServicePage() {
             <TableRow>{["Complaint", "Issue", "Priority", "Technician", "SLA", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((t) => {
+            {pagination.pageItems.map((t) => {
               const s = sla(t);
               return (
                 <TableRow key={t.id}>
@@ -227,12 +232,14 @@ export default function ServicePage() {
                 </TableRow>
               );
             })}
-            {rows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">No complaints match. Change the filter.</TableCell></TableRow>}
+            {loading && rows.length === 0 && <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></TableCell></TableRow>}
+            {!loading && rows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">No complaints match. Change the filter.</TableCell></TableRow>}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="complaints" />
       </Panel>
 
-      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit complaint" : "New complaint"} description="Priority decides the SLA: Critical 4h, High 24h, Medium 48h, Low 72h." error={error} saveLabel="Save complaint" onSave={save}>
+      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit complaint" : "New complaint"} description="Priority decides the SLA: Critical 4h, High 24h, Medium 48h, Low 72h." error={error} busy={saving} saveLabel="Save complaint" onSave={save}>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-2 sm:col-span-2">
             <span className="font-semibold text-slate-800">Customer</span>

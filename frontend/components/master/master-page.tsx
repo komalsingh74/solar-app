@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Chip, StatusBadge, Tone, ViewDialog } from "@/components/ui/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,11 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TableExportActions from "@/components/layout/TableExportActions";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination from "@/components/common/data-pagination";
+import Loader from "@/components/common/Loader";
 import api from "@/lib/api";
+import { showSuccess } from "@/lib/toast";
 
 export const card = "rounded-2xl border border-slate-200 bg-white shadow-none";
 export const darkBtn = "h-10 rounded-xl bg-slate-950 px-4 text-white shadow-sm hover:bg-slate-800";
@@ -57,9 +61,19 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
   const [list, setList] = useState<Row[]>([]);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: cfg.columns[0]?.key ?? "",
+    direction: "asc",
+  });
   const [draft, setDraft] = useState<Row>(blank);
   const [open, setOpen] = useState(false);
   const [viewRow, setViewRow] = useState<Row | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [detailBusy, setDetailBusy] = useState(false);
+  const [detailFailed, setDetailFailed] = useState(false);
+  const detailRequestId = useRef(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | number | null>(null);
@@ -69,22 +83,53 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
   const [newVal, setNewVal] = useState("");
 
   const tones: Record<string, Tone> = { Active: "green", Inactive: "amber", ...cfg.tones };
+  const serverFilter = cfg.filterKey === "status" ? filter : "all";
   const rows = useMemo(
     () => list.filter((r) =>
-      (!cfg.filterKey || filter === "all" || r[cfg.filterKey] === filter) &&
-      cfg.searchKeys.map((k) => r[k]).join(" ").toLowerCase().includes(q.toLowerCase())),
-    [list, q, filter, cfg.filterKey, cfg.searchKeys],
+      !cfg.filterKey || filter === "all" || r[cfg.filterKey] === filter),
+    [list, filter, cfg.filterKey],
   );
+  const sortedRows = useMemo(() => {
+    if (!sort.key) return rows;
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+    return [...rows].sort((a, b) => {
+      const left = a[sort.key];
+      const right = b[sort.key];
+      const comparison =
+        typeof left === "number" && typeof right === "number"
+          ? left - right
+          : collator.compare(String(left ?? ""), String(right ?? ""));
+      return sort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [rows, sort]);
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const visiblePage = Math.min(page, pageCount);
+  const pageRows = useMemo(
+    () => sortedRows.slice((visiblePage - 1) * pageSize, visiblePage * pageSize),
+    [sortedRows, visiblePage, pageSize],
+  );
+
   useEffect(() => {
     let active = true;
-    api.get(cfg.endpoint, { params: { page: 1, limit: 100 } })
+    const controller = new AbortController();
+    const params = {
+      page: 1,
+      limit: 100,
+      ...(q.trim() ? { q: q.trim() } : {}),
+      ...(serverFilter !== "all" ? { status: serverFilter } : {}),
+    };
+    api.get(cfg.endpoint, { params, signal: controller.signal })
       .then(async (response) => {
         const items = response.data?.data?.items;
         if (!Array.isArray(items)) throw new Error("The server returned an invalid master list.");
         const pages = Number(response.data?.data?.pagination?.pages) || 1;
+        if (!Number.isSafeInteger(pages) || pages < 1) throw new Error("The server returned invalid pagination data.");
         const remaining = await Promise.all(
           Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
-            api.get(cfg.endpoint, { params: { page: index + 2, limit: 100 } })
+            api.get(cfg.endpoint, {
+              params: { ...params, page: index + 2 },
+              signal: controller.signal,
+            })
           )
         );
         const allItems = [
@@ -97,20 +142,102 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
         ];
         if (active) setList(allItems.map((item: Record<string, unknown>) => cfg.fromApi(item)));
       })
-      .catch((error: { userMessage?: string; message?: string }) => {
-        if (active) setRequestError(error.userMessage || error.message || `Could not load ${cfg.entity} records.`);
+      .catch((error: { userMessage?: string; message?: string; code?: string }) => {
+        if (active && error.code !== "ERR_CANCELED") {
+          setRequestError(error.userMessage || error.message || `Could not load ${cfg.entity} records.`);
+        }
       })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [cfg]);
+    return () => { active = false; controller.abort(); };
+  }, [cfg, q, serverFilter]);
 
-  const openForm = (r: Row) => { setDraft({ ...r }); setAdding(null); setRequestError(""); setOpen(true); };
+  const fetchRecord = async (id: string | number) => {
+    const response = await api.get(`${cfg.endpoint}/${id}`);
+    const item = response.data?.data?.item;
+    if (!item || typeof item !== "object") {
+      throw new Error("The server returned an invalid record.");
+    }
+    return cfg.fromApi(item as Record<string, unknown>);
+  };
+  const openForm = async (row: Row) => {
+    const requestId = ++detailRequestId.current;
+    setAdding(null);
+    setRequestError("");
+    setDetailFailed(false);
+    if (!row.id) {
+      setDetailBusy(false);
+      setDraft({ ...blank });
+      setOpen(true);
+      return;
+    }
+
+    setDraft({ ...blank });
+    setOpen(true);
+    setDetailBusy(true);
+    try {
+      const record = await fetchRecord(row.id);
+      if (requestId === detailRequestId.current) setDraft(record);
+    } catch (error) {
+      const err = error as { userMessage?: string; message?: string };
+      if (requestId === detailRequestId.current) {
+        setDetailFailed(true);
+        setRequestError(err.userMessage || err.message || `Could not load ${cfg.entity} details.`);
+      }
+    } finally {
+      if (requestId === detailRequestId.current) setDetailBusy(false);
+    }
+  };
+  const openDetails = async (row: Row) => {
+    const requestId = ++detailRequestId.current;
+    setViewRow(null);
+    setViewOpen(true);
+    setDetailBusy(true);
+    setDetailFailed(false);
+    setRequestError("");
+    try {
+      const record = await fetchRecord(row.id);
+      if (requestId === detailRequestId.current) setViewRow(record);
+    } catch (error) {
+      const err = error as { userMessage?: string; message?: string };
+      if (requestId === detailRequestId.current) {
+        setDetailFailed(true);
+        setRequestError(err.userMessage || err.message || `Could not load ${cfg.entity} details.`);
+      }
+    } finally {
+      if (requestId === detailRequestId.current) setDetailBusy(false);
+    }
+  };
+  const closeForm = () => {
+    detailRequestId.current += 1;
+    setOpen(false);
+    setDetailBusy(false);
+  };
+  const closeDetails = () => {
+    detailRequestId.current += 1;
+    setViewOpen(false);
+    setViewRow(null);
+    setDetailBusy(false);
+  };
   const set = (k: string, v: string | number) => setDraft((s) => ({ ...s, [k]: v }));
+  const normalizeOption = (value: string) => value.trim().toLowerCase();
+  const getFieldOptions = (field: Field) => {
+    const recordOptions = field.creatable
+      ? list.map((row) => row[field.key]).filter((value): value is string => typeof value === "string")
+      : [];
+    const uniqueOptions = new Map<string, string>();
+    for (const value of [...(field.options ?? []), ...recordOptions, ...(extras[field.key] ?? [])]) {
+      const trimmed = value.trim();
+      const normalized = normalizeOption(trimmed);
+      if (normalized && !uniqueOptions.has(normalized)) uniqueOptions.set(normalized, trimmed);
+    }
+    return [...uniqueOptions.values()];
+  };
   const invalid = allFields.some((f) => f.required && !String(draft[f.key] ?? "").trim());
   const save = async () => {
-    if (invalid) return;
+    if (invalid || detailBusy || detailFailed) return;
     setSaving(true);
     setRequestError("");
+    const isEditing = Boolean(draft.id);
     try {
       const response = draft.id
         ? await api.patch(`${cfg.endpoint}/${draft.id}`, cfg.toApi(draft))
@@ -119,7 +246,10 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
       setList((current) => draft.id
         ? current.map((row) => row.id === draft.id ? saved : row)
         : [saved, ...current]);
+      setPage(1);
       setOpen(false);
+      const entity = cfg.entity.charAt(0).toUpperCase() + cfg.entity.slice(1);
+      showSuccess(`${entity} ${isEditing ? "updated" : "added"} successfully.`);
     } catch (error) {
       const err = error as { userMessage?: string; message?: string };
       setRequestError(err.userMessage || err.message || `Could not save ${cfg.entity}.`);
@@ -134,6 +264,7 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
     try {
       await api.delete(`${cfg.endpoint}/${row.id}`);
       setList((current) => current.filter((entry) => entry.id !== row.id));
+      setPage(1);
       if (viewRow?.id === row.id) setViewRow(null);
     } catch (error) {
       const err = error as { userMessage?: string; message?: string };
@@ -145,6 +276,16 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
   const addOption = (key: string) => {
     const v = newVal.trim();
     if (!v) return;
+    const field = allFields.find((candidate) => candidate.key === key);
+    const existing = field && getFieldOptions(field).find(
+      (option) => normalizeOption(option) === normalizeOption(v),
+    );
+    if (existing) {
+      set(key, existing);
+      setNewVal("");
+      setAdding(null);
+      return;
+    }
     setExtras((e) => ({ ...e, [key]: [...(e[key] ?? []), v] }));
     set(key, v); setNewVal(""); setAdding(null);
   };
@@ -158,12 +299,13 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
         </FieldBox>
       );
     if (f.type === "select") {
-      const opts = [...(f.options ?? []), ...(extras[f.key] ?? [])];
       const cur = String(draft[f.key]);
-      if (cur && !opts.includes(cur)) opts.push(cur);
+      const opts = getFieldOptions(f);
+      const selected = opts.find((option) => normalizeOption(option) === normalizeOption(cur)) ?? cur;
+      if (cur && !opts.some((option) => normalizeOption(option) === normalizeOption(cur))) opts.push(cur);
       return (
         <FieldBox key={f.key} className={span} label={f.label}>
-          <Select value={cur} onValueChange={(v) => { if (v !== null) set(f.key, v); }}>
+          <Select value={selected} onValueChange={(v) => { if (v !== null) set(f.key, v); }}>
             <SelectTrigger className={inputCls}><SelectValue placeholder="Select" /></SelectTrigger>
             <SelectContent>{opts.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
           </Select>
@@ -186,6 +328,17 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
       </FieldBox>
     );
   };
+
+  const toggleSort = (key: string) => {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+    setPage(1);
+  };
+  const exportRows = sortedRows.map((row) =>
+    Object.fromEntries(cfg.columns.map(({ key, label }) => [key, String(row[key] ?? "")])),
+  );
 
   const cell = (c: Column, r: Row) => {
     const v = r[c.key];
@@ -249,10 +402,18 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
         <div className="flex flex-wrap items-center gap-3 p-4">
           <div className="relative min-w-[240px] flex-1">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={cfg.searchPlaceholder} aria-label="Search" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11 text-sm" />
+            <Input value={q} onChange={(e) => { setQ(e.target.value); setPage(1); setLoading(true); setRequestError(""); }} placeholder={cfg.searchPlaceholder} aria-label="Search" className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-11 text-sm" />
           </div>
           {cfg.filterKey && (
-            <Select value={filter || null} onValueChange={(value) => setFilter(value ?? "")}>
+            <Select value={filter || null} onValueChange={(value) => {
+              const nextFilter = value ?? "all";
+              setFilter(nextFilter);
+              setPage(1);
+              if (cfg.filterKey === "status") {
+                setLoading(true);
+                setRequestError("");
+              }
+            }}>
               <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50 text-sm" aria-label="Filter"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{cfg.filterAll ?? "All"}</SelectItem>
@@ -263,66 +424,86 @@ export function MasterPage({ cfg }: { cfg: MasterConfig }) {
               </SelectContent>
             </Select>
           )}
-          <TableExportActions />
+          <TableExportActions
+            rows={exportRows}
+            columns={cfg.columns.map(({ key, label }) => ({ key, label }))}
+          />
         </div>
         <Table>
           <TableHeader className="bg-slate-50/70">
             <TableRow className="hover:bg-transparent">
-              {cfg.columns.map((c) => <TableHead key={c.key} className="h-14 px-4 text-sm font-medium text-slate-900">{c.label}</TableHead>)}
+              {cfg.columns.map((c) => (
+                <TableHead key={c.key} className="h-14 px-4 text-sm font-medium text-slate-900">
+                  <button type="button" className="inline-flex items-center gap-1.5 hover:text-indigo-700" onClick={() => toggleSort(c.key)}>
+                    {c.label}
+                    {sort.key !== c.key ? <ArrowUpDown size={14} /> : sort.direction === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                  </button>
+                </TableHead>
+              ))}
               <TableHead className="w-24 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
+            {!loading && pageRows.map((r) => (
               <TableRow key={r.id}>
                 {cfg.columns.map((c) => <TableCell key={c.key} className="px-4 py-3">{cell(c, r)}</TableCell>)}
                 <TableCell className="px-4 text-right">
                   <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" aria-label={`View details for ${r[cfg.columns[0].key]}`} title="View details" className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => setViewRow(r)}><Eye /></Button>
+                    <Button variant="ghost" size="icon" aria-label={`View details for ${r[cfg.columns[0].key]}`} title="View details" className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => void openDetails(r)}><Eye /></Button>
                     <Button variant="ghost" size="icon" aria-label={`Edit ${r[cfg.columns[0].key]}`} title={`Edit ${cfg.entity}`} className="text-slate-500" onClick={() => openForm(r)}><Pencil /></Button>
                     <Button variant="ghost" size="icon" aria-label={`Delete ${r[cfg.columns[0].key]}`} title={`Delete ${cfg.entity}`} className="text-slate-500 hover:bg-rose-50 hover:text-rose-600" disabled={deleting === r.id} onClick={() => void remove(r)}><Trash2 /></Button>
                   </div>
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && <TableRow><TableCell colSpan={cfg.columns.length + 1} className="py-14 text-center text-muted-foreground">{loading ? `Loading ${cfg.entity} records...` : `No ${cfg.entity} found. Try a different search.`}</TableCell></TableRow>}
+            {loading && <TableRow><TableCell colSpan={cfg.columns.length + 1} className="p-0"><TableSkeleton rows={cfg.endpoint.endsWith("/items") ? 8 : 5} columns={cfg.endpoint.endsWith("/items") ? 6 : cfg.columns.length + 1} embedded /></TableCell></TableRow>}
+            {!loading && pageRows.length === 0 && <TableRow><TableCell colSpan={cfg.columns.length + 1} className="py-14 text-center text-muted-foreground">{`No ${cfg.entity} found. Try a different search.`}</TableCell></TableRow>}
           </TableBody>
         </Table>
+        <DataPagination
+          page={visiblePage}
+          pageSize={pageSize}
+          totalItems={sortedRows.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          itemLabel={cfg.entity}
+        />
       </div>
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={(next) => { if (next) setOpen(true); else closeForm(); }}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 border-l border-slate-200 bg-white p-0 !max-w-2xl">
           <SheetHeader className="border-b border-slate-200 px-4 py-3 text-left">
             <SheetTitle className="text-xl font-bold">{draft.id ? `Edit ${cfg.entity}` : `New ${cfg.entity}`}</SheetTitle>
             <SheetDescription>{draft.id ? "Update the details, then save." : `Fill in the ${cfg.entity} details, then save.`}</SheetDescription>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto px-4 py-6">{Form}</div>
+          <div className="flex-1 overflow-y-auto px-4 py-6">
+            {detailBusy ? <Loader type="inline" text="Loading record from server..." /> : detailFailed ? <p role="alert" className="text-sm text-rose-600">{requestError}</p> : Form}
+          </div>
           <SheetFooter className="flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-end">
             {(invalid || requestError) && <span role={requestError ? "alert" : undefined} className={`text-sm sm:mr-auto ${requestError ? "text-rose-600" : "text-muted-foreground"}`}>{requestError || "Fill the required fields."}</span>}
             <div className="flex gap-3">
-              <Button variant="outline" size="lg" className="h-10 flex-1 rounded-xl border-slate-200 px-4 sm:flex-none" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button size="lg" className={`${darkBtn} flex-1 sm:flex-none disabled:opacity-50`} disabled={invalid || saving} onClick={save}>{saving ? "Saving..." : `Save ${cfg.entity}`}</Button>
+              <Button variant="outline" size="lg" className="h-10 flex-1 rounded-xl border-slate-200 px-4 sm:flex-none" onClick={closeForm}>Cancel</Button>
+              <Button size="lg" className={`${darkBtn} flex-1 sm:flex-none disabled:opacity-50`} disabled={invalid || saving || detailBusy || detailFailed} onClick={save}>{saving ? <Loader type="inline" size="sm" text={`Saving ${cfg.entity}...`} className="!text-white" /> : `Save ${cfg.entity}`}</Button>
             </div>
           </SheetFooter>
         </SheetContent>
       </Sheet>
 
       <ViewDialog
-        open={Boolean(viewRow)}
-        onOpenChange={(next) => { if (!next) setViewRow(null); }}
+        open={viewOpen}
+        onOpenChange={(next) => { if (next) setViewOpen(true); else closeDetails(); }}
         title={`${cfg.entity} details`}
         description="Complete record information."
         size="sm:max-w-3xl"
         footer={viewRow && (
-          <div className="flex w-full items-center justify-between gap-3 border-t border-slate-100 pt-3">
-            <p className="text-xs text-slate-400">Record #{viewRow.id}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="h-9 rounded-lg border-slate-200 px-3 text-xs" onClick={() => setViewRow(null)}>Close</Button>
-              <Button className="h-9 rounded-xl bg-slate-950 px-3.5 text-xs text-white shadow-sm hover:bg-slate-800" onClick={() => { const row = viewRow; setViewRow(null); openForm(row); }}><Pencil size={14} /> Edit {cfg.entity}</Button>
-            </div>
+          <div className="flex w-full justify-end gap-2 border-t border-slate-100 pt-3">
+              <Button variant="outline" className="h-9 rounded-lg border-slate-200 px-3 text-xs" onClick={closeDetails}>Close</Button>
+              <Button className="h-9 rounded-xl bg-slate-950 px-3.5 text-xs text-white shadow-sm hover:bg-slate-800" onClick={() => { const row = viewRow; closeDetails(); void openForm(row); }}><Pencil size={14} /> Edit {cfg.entity}</Button>
           </div>
         )}
       >
+        {detailBusy && !viewRow && <div className="relative min-h-28"><Loader type="overlay" text={`Loading ${cfg.entity} details...`} /></div>}
+        {detailFailed && !viewRow && <p role="alert" className="py-4 text-sm text-rose-600">{requestError}</p>}
         {viewRow && <div className="space-y-4 py-2">
           <div className="flex items-center gap-2.5 rounded-xl bg-slate-50/70 p-2.5">
             <span className="grid h-10 w-10 flex-none place-items-center rounded-lg bg-indigo-50 text-sm font-bold text-indigo-700">

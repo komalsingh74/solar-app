@@ -3,20 +3,78 @@ import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
-const photoSchema = new Schema({
-  id: { type: String, trim: true, required: true },
-  name: { type: String, trim: true, default: "" },
-  src: { type: String, required: true },
-  lat: { type: Number, default: null },
-  lng: { type: Number, default: null },
-  source: { type: String, enum: ["exif", "device", "none"], default: "none" },
-  addedAt: { type: Date, default: Date.now },
-}, { _id: false });
+// Site survey photos
+const photoSchema = new Schema(
+  {
+    id: {
+      type: String,
+      trim: true,
+      required: true,
+    },
 
-const activitySchema = new Schema({
-  at: { type: Date, default: Date.now },
-  text: { type: String, required: true, trim: true },
-}, { _id: false });
+    name: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    // Store Cloudinary / S3 URL
+    src: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    lat: {
+      type: Number,
+      min: -90,
+      max: 90,
+      default: null,
+    },
+
+    lng: {
+      type: Number,
+      min: -180,
+      max: 180,
+      default: null,
+    },
+
+    source: {
+      type: String,
+      enum: ["exif", "device", "none"],
+      default: "none",
+    },
+
+    addedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
+// Survey activity history
+const activitySchema = new Schema(
+  {
+    at: {
+      type: Date,
+      default: Date.now,
+    },
+
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    by: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+  },
+  { _id: false }
+);
 
 const siteSurveySchema = new Schema(
   {
@@ -26,21 +84,19 @@ const siteSurveySchema = new Schema(
       default: null,
     },
 
-    // Visit details
+    // Customer / Lead / Project references
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      default: null,
     },
 
-    // Optional CRM lead reference
     lead: {
       type: Schema.Types.ObjectId,
       ref: "Lead",
       default: null,
     },
 
-    // Optional solar project reference
     project: {
       type: Schema.Types.ObjectId,
       ref: "SolarProject",
@@ -53,6 +109,7 @@ const siteSurveySchema = new Schema(
       trim: true,
     },
 
+    // Assigned survey engineer
     engineer: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -68,7 +125,15 @@ const siteSurveySchema = new Schema(
     visitDate: {
       type: Date,
       required: true,
-      // index: true,
+    },
+
+    visitTime: {
+      type: String,
+      match: [
+        /^([01]\d|2[0-3]):[0-5]\d$/,
+        "Enter a valid visit time",
+      ],
+      default: "11:00",
     },
 
     status: {
@@ -81,10 +146,9 @@ const siteSurveySchema = new Schema(
         "Rescheduled",
       ],
       default: "Scheduled",
-      // index: true,
     },
 
-    // Roof & site details
+    // Roof and site details
     roofType: {
       type: String,
       enum: [
@@ -135,7 +199,7 @@ const siteSurveySchema = new Schema(
       default: null,
     },
 
-    // Auto assessment
+    // Assessment details
     assessmentStatus: {
       type: String,
       enum: ["Pending", "Completed", "Needs Review"],
@@ -154,35 +218,31 @@ const siteSurveySchema = new Schema(
       default: "",
     },
 
-    visitTime: {
-      type: String,
-      match: [/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a valid visit time"],
-      default: "11:00",
-    },
-
     cancelReason: {
       type: String,
       trim: true,
       default: "",
     },
 
+    // Dynamic survey checklist
     checklist: {
       type: Map,
       of: Boolean,
       default: {},
     },
 
+    // Survey photos
     photos: {
       type: [photoSchema],
       default: [],
     },
 
+    // Activity history
     activity: {
       type: [activitySchema],
       default: [],
     },
 
-    // Survey completion
     completedAt: {
       type: Date,
       default: null,
@@ -207,8 +267,17 @@ const siteSurveySchema = new Schema(
   }
 );
 
-// Unique survey number across this single-tenant application.
-// Multiple null values are allowed for unsaved/generated numbers.
+// At least one CRM reference is required
+siteSurveySchema.pre("validate", function () {
+  if (!this.customer && !this.lead) {
+    this.invalidate(
+      "customer",
+      "A customer or lead reference is required"
+    );
+  }
+});
+
+// Unique survey number
 siteSurveySchema.index(
   { surveyNumber: 1 },
   {
@@ -219,19 +288,36 @@ siteSurveySchema.index(
   }
 );
 
-// Common filters
-siteSurveySchema.index({
-  customer: 1,
-});
-
+// Engineer schedule and task listing
 siteSurveySchema.index({
   engineer: 1,
+  status: 1,
   visitDate: 1,
 });
 
-siteSurveySchema.index({ status: 1 });
+// Customer survey history
+siteSurveySchema.index({
+  customer: 1,
+  visitDate: -1,
+});
 
-siteSurveySchema.index({ lead: 1 });
+// Lead survey history
+siteSurveySchema.index({
+  lead: 1,
+  visitDate: -1,
+});
+
+// Project survey history
+siteSurveySchema.index({
+  project: 1,
+  visitDate: -1,
+});
+
+// Status-based survey listing
+siteSurveySchema.index({
+  status: 1,
+  visitDate: 1,
+});
 
 const SiteSurvey =
   mongoose.models.SiteSurvey ||

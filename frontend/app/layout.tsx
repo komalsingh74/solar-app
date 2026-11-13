@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import Providers from "@/app/providers";
+import Loader from "@/components/common/Loader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Suspense fallback={<div role="status" className="p-6 text-sm text-slate-500">Loading application...</div>}>
+        <Suspense fallback={<Loader type="page" text="Loading application..." />}>
           <Providers>{children}</Providers>
         </Suspense>
       </body>

@@ -9,6 +9,10 @@ const categorySchema = new mongoose.Schema(
       trim: true,
       maxlength: [100, "Category name cannot exceed 100 characters"],
     },
+    normalizedName: {
+      type: String,
+      select: false,
+    },
 
     group: {
       type: String,
@@ -48,10 +52,13 @@ const categorySchema = new mongoose.Schema(
   }
 );
 
-// Prevent duplicate category names within the same group
+// Expense category names are unique globally after case normalization.
 categorySchema.index(
-  { categoryName: 1, group: 1 },
-  { unique: true }
+  { normalizedName: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { normalizedName: { $type: "string" } },
+  }
 );
 
 const Category =

@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const MASTER_HREF = "/master/customer"; // change to your Customer Master route
 const LIFECYCLE = ["Prospect", "In installation", "Payment due", "Completed"];
@@ -39,6 +41,7 @@ export default function CustomersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [s.customers, q, stage],
   );
+  const pagination = usePagination(rows, { resetKey: `${q}|${stage}` });
   const addNote = (c: Customer) => {
     if (!note.trim()) return;
     void update((st) => ({ ...st, customers: st.customers.map((x) => (x.id === c.id ? {
@@ -76,7 +79,7 @@ export default function CustomersPage() {
         <Table>
           <TableHeader className="bg-slate-50/70"><TableRow>{["Customer", "Project", "Order value", "Payment", "Outstanding", "Service", "Owner", "Stage"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
           <TableBody>
-            {rows.map(({ c, b }) => {
+            {pagination.pageItems.map(({ c, b }) => {
               const p = c.projects.find((x) => x.stage !== STAGES[STAGES.length - 1]) ?? c.projects[0];
               return (
                 <TableRow key={c.id} className="cursor-pointer" onClick={() => { setNote(""); setViewId(c.id); }}>
@@ -91,9 +94,11 @@ export default function CustomersPage() {
                 </TableRow>
               );
             })}
-            {rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">{storeStatus.loading ? "Loading customers..." : "No customers match."}</TableCell></TableRow>}
+            {storeStatus.loading && rows.length === 0 && <TableRow><TableCell colSpan={8} className="p-0"><TableSkeleton rows={5} columns={8} embedded /></TableCell></TableRow>}
+            {!storeStatus.loading && rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No customers match.</TableCell></TableRow>}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="customers" />
       </Panel>
 
       {view && (() => {

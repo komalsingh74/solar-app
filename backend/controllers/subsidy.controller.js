@@ -94,7 +94,7 @@ export const updateSubsidyApplication = asyncHandler(async (req, res) => {
 
 export const deleteSubsidyApplication = asyncHandler(async (req, res) => {
   if (!validId(req.params.id)) throw new AppError("Invalid application ID", 400, "INVALID_ID");
-  const item = await SubsidyApplication.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { new: true });
+  const item = await SubsidyApplication.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { returnDocument: "after" });
   if (!item) throw new AppError("Subsidy application not found", 404, "APPLICATION_NOT_FOUND");
   res.json({ success: true, data: { id: item._id } });
 });

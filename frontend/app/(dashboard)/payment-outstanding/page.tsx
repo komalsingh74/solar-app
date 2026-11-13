@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 /* =====================================================================
    Payments, Plans & Loan — ek hi page
@@ -138,6 +140,8 @@ const TypeBadge = ({ a, onSet }: { a: Account; onSet: () => void }) =>
 export default function PaymentsPage() {
   const [list, setList] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [paySaving, setPaySaving] = useState(false);
+  const [planSaving, setPlanSaving] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
@@ -176,6 +180,10 @@ export default function PaymentsPage() {
     .flatMap((a) => calc(a).ms.filter((m) => m.paid < m.amt).map((m) => ({ a, m })))
     .sort((x, y) => x.m.due.localeCompare(y.m.due));
   const loans = filtered.filter((a) => a.loan);
+  const paymentPagination = usePagination(rows, { resetKey: `${q}|${filter}|${typeFilter}` });
+  const planPagination = usePagination(filtered, { resetKey: q });
+  const loanPagination = usePagination(loans, { resetKey: q });
+  const installmentPagination = usePagination(installments, { resetKey: q });
   const setP = (k: keyof PayDraft) => (v: string) => setPay((s) => ({ ...s, [k]: v }));
   const setPl = (k: keyof PlanDraft) => (v: string) => setPlan((s) => ({ ...s, [k]: v }));
 
@@ -199,6 +207,7 @@ export default function PaymentsPage() {
     : pay.mode !== "Cash" && !pay.ref.trim() ? "Add UTR / cheque / reference number." : "";
   const savePay = async () => {
     if (payError || !payTarget || !pc) return;
+    setPaySaving(true);
     try {
       await api.post("/payments", {
         projectId: payTarget.id, amount, mode: pay.mode, paymentDate: pay.date,
@@ -209,7 +218,7 @@ export default function PaymentsPage() {
     } catch (error) {
       const err = error as { userMessage?: string; message?: string };
       setRequestError(err.userMessage || err.message || "Could not record payment.");
-    }
+    } finally { setPaySaving(false); }
   };
 
   /* ---------- Set / edit plan ---------- */
@@ -248,6 +257,7 @@ export default function PaymentsPage() {
   const preview = planTarget && !planError ? buildSchedule(planTotal, t, adv, loan, count, plan.first) : [];
   const savePlan = async () => {
     if (planError || !planTarget) return;
+    setPlanSaving(true);
     try {
       await api.put(`/payments/accounts/${planTarget.id}/plan`, {
         planType: t, totalAmount: planTotal,
@@ -261,7 +271,7 @@ export default function PaymentsPage() {
     } catch (error) {
       const err = error as { userMessage?: string; message?: string };
       setRequestError(err.userMessage || err.message || "Could not save payment plan.");
-    }
+    } finally { setPlanSaving(false); }
   };
 
   const setLoanField = async (id: string, patch: Partial<Loan>) => {
@@ -296,7 +306,6 @@ export default function PaymentsPage() {
         <Button size="lg" className={darkBtn} disabled={!list.length} onClick={() => openPay(list.find((a) => calc(a).outstanding > 0) ?? list[0])}><Plus /> Record payment</Button>
       </PageHeader>
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-4 text-sm text-muted-foreground">Loading payment accounts...</Panel>}
 
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard icon={<Wallet size={24} />} value={inr(all.reduce((s, c) => s + c.outstanding, 0))} label="Total outstanding" />
@@ -335,7 +344,7 @@ export default function PaymentsPage() {
               <TableRow>{["Customer", "Order value", "Payment type", "Received", "Outstanding", "Next payment", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((a) => {
+              {paymentPagination.pageItems.map((a) => {
                 const c = calc(a);
                 return (
                   <TableRow key={a.id}>
@@ -369,9 +378,11 @@ export default function PaymentsPage() {
                   </TableRow>
                 );
               })}
-              {rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No accounts match. Change the filter.</TableCell></TableRow>}
+              {loading && rows.length === 0 && <TableRow><TableCell colSpan={8} className="p-0"><TableSkeleton rows={5} columns={8} embedded /></TableCell></TableRow>}
+              {!loading && rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No accounts match. Change the filter.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...paymentPagination.props} itemLabel="payment accounts" />
         </Panel>
       )}
 
@@ -390,7 +401,7 @@ export default function PaymentsPage() {
               <TableRow>{["Customer", "Project value", "Payment type", "Plan detail", "Advance", "Loan (bank)", "Customer contribution"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((a) => {
+              {planPagination.pageItems.map((a) => {
                 const c = calc(a);
                 const loanTotal = c.loanPaid + c.loanDue;
                 const advItem = c.ms.find((m) => m.label === "Advance");
@@ -409,9 +420,11 @@ export default function PaymentsPage() {
                   </TableRow>
                 );
               })}
-              {filtered.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No accounts match.</TableCell></TableRow>}
+              {loading && filtered.length === 0 && <TableRow><TableCell colSpan={8} className="p-0"><TableSkeleton rows={5} columns={8} embedded /></TableCell></TableRow>}
+              {!loading && filtered.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No accounts match.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...planPagination.props} itemLabel="payment plans" />
         </Panel>
       )}
 
@@ -424,7 +437,7 @@ export default function PaymentsPage() {
               <TableRow>{["Customer", "Bank / finance", "Application no.", "Loan amount", "Disbursed", "Pending", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
             </TableHeader>
             <TableBody>
-              {loans.map((a) => {
+              {loanPagination.pageItems.map((a) => {
                 const c = calc(a);
                 return (
                   <TableRow key={a.id}>
@@ -442,9 +455,11 @@ export default function PaymentsPage() {
                   </TableRow>
                 );
               })}
-              {loans.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">Koi loan nahi mila. Payment type “Bank Finance / Loan” wale customers yahan dikhenge.</TableCell></TableRow>}
+              {loading && loans.length === 0 && <TableRow><TableCell colSpan={8} className="p-0"><TableSkeleton rows={5} columns={8} embedded /></TableCell></TableRow>}
+              {!loading && loans.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">Koi loan nahi mila. Payment type “Bank Finance / Loan” wale customers yahan dikhenge.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...loanPagination.props} itemLabel="loans" />
         </Panel>
       )}
 
@@ -457,7 +472,7 @@ export default function PaymentsPage() {
               <TableRow>{["Due date", "Customer", "Installment", "Amount", "Paid", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow>
             </TableHeader>
             <TableBody>
-              {installments.map(({ a, m }) => {
+              {installmentPagination.pageItems.map(({ a, m }) => {
                 const st = msStatus(m);
                 return (
                   <TableRow key={`${a.id}-${m.label}`}>
@@ -476,14 +491,16 @@ export default function PaymentsPage() {
                   </TableRow>
                 );
               })}
-              {installments.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">Koi pending installment nahi hai.</TableCell></TableRow>}
+              {loading && installments.length === 0 && <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></TableCell></TableRow>}
+              {!loading && installments.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">Koi pending installment nahi hai.</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <DataPagination {...installmentPagination.props} itemLabel="installments" />
         </Panel>
       )}
 
       {/* ---------- Record payment ---------- */}
-      <SideSheet open={payOpen} onOpenChange={setPayOpen} title="Record payment" description="Customer ka payment customer milestone me jata hai, loan disbursement loan milestone me." error={payError} saveLabel="Save payment" onSave={savePay}>
+      <SideSheet open={payOpen} onOpenChange={setPayOpen} title="Record payment" description="Customer ka payment customer milestone me jata hai, loan disbursement loan milestone me." error={payError || requestError} busy={paySaving} saveLabel="Save payment" onSave={savePay}>
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField className="sm:col-span-2" label="Customer / project" value={pay.account} onChange={setP("account")} options={list.map(label)} />
           {payTarget && pc && (
@@ -501,7 +518,7 @@ export default function PaymentsPage() {
       </SideSheet>
 
       {/* ---------- Set / edit plan ---------- */}
-      <SideSheet open={planOpen} onOpenChange={setPlanOpen} title="Payment plan" description="Pehle batao customer kaise payment karega. Uske hisaab se schedule apne aap ban jayega." error={planError} saveLabel="Save plan" onSave={savePlan}>
+      <SideSheet open={planOpen} onOpenChange={setPlanOpen} title="Payment plan" description="Pehle batao customer kaise payment karega. Uske hisaab se schedule apne aap ban jayega." error={planError || requestError} busy={planSaving} saveLabel="Save plan" onSave={savePlan}>
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField className="sm:col-span-2" label="Project / customer" value={plan.account} onChange={setPl("account")} options={list.map(label)} />
           <TextField className="sm:col-span-2" label="Project value (₹)" type="number" min={0} value={plan.total} onChange={setPl("total")} />

@@ -5,6 +5,8 @@ import { Plus, Download, FileText, Banknote, CircleCheck, TriangleAlert, Send, R
 import { exportSimplePdf } from "@/lib/export";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 import {
   Btn,
   Card,
@@ -18,7 +20,6 @@ import {
   SectionTitle,
   StatCard,
   StatGrid,
-  TableFooter,
   TableToolbar,
   Tabs,
   TODAY,
@@ -155,6 +156,7 @@ export default function InvoicesPage() {
     const q = query.trim().toLowerCase();
     return !q || [i.id, i.customer, i.project].some((v) => v.toLowerCase().includes(q));
   });
+  const pagination = usePagination(visible, { resetKey: `${tab}|${query}` });
 
   const send = async (invoice: Inv) => {
     try {
@@ -209,7 +211,6 @@ export default function InvoicesPage() {
       />
 
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Card className="p-5 text-sm text-slate-500">Loading invoices...</Card>}
       <StatGrid>
         <StatCard dark label="Total invoiced" value={inr(invoiced)} sub="Including GST, sent invoices" icon={FileText} />
         <StatCard label="Received" value={inr(received)} sub="Payments recorded" icon={CircleCheck} tint="bg-emerald-50 text-emerald-600" />
@@ -273,7 +274,8 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visible.map((i) => {
+              {loading && visible.length === 0 && <tr><td colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></td></tr>}
+              {pagination.pageItems.map((i) => {
                 const st = statusOf(i);
                 const bal = Math.max(total(i) - i.paid, 0);
                 const late = st === "Overdue" ? daysBetween(i.due, TODAY) : 0;
@@ -347,9 +349,9 @@ export default function InvoicesPage() {
               })}
             </tbody>
           </table>
-          {visible.length === 0 && <EmptyState icon={FileText} title="No invoices found" text="Change the filters or create a new invoice." />}
+          {!loading && visible.length === 0 && <EmptyState icon={FileText} title="No invoices found" text="Change the filters or create a new invoice." />}
         </div>
-        <TableFooter shown={visible.length} total={list.length} />
+        <DataPagination {...pagination.props} itemLabel="invoices" />
       </Card>
 
       {open && (

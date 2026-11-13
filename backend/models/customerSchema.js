@@ -92,6 +92,26 @@ const documentSchema = new Schema(
       default: "",
       trim: true,
     },
+    downloadUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    resourceType: {
+      type: String,
+      enum: ["image", "raw", ""],
+      default: "",
+    },
+    accessType: {
+      type: String,
+      enum: ["upload", "authenticated", ""],
+      default: "",
+    },
+    format: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     originalFileName: {
       type: String,
       default: "",

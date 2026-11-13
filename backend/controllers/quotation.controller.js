@@ -3,9 +3,9 @@ import Customer from "../models/customerSchema.js";
 import Item from "../models/itemSchema.js";
 import Lead from "../models/lead.js";
 import Quotation from "../models/quotation.js";
-import Sequence from "../models/Sequence.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import nextSequence from "../services/nextSequence.js";
 
 const statuses = ["Draft", "Sent", "Accepted", "Rejected", "Expired", "Cancelled"];
 const validId = (value) => mongoose.isValidObjectId(value);
@@ -13,16 +13,6 @@ const pageParams = (query) => ({
   page: Math.max(1, Number.parseInt(query.page, 10) || 1),
   limit: Math.min(100, Math.max(1, Number.parseInt(query.limit, 10) || 20)),
 });
-
-const nextNumber = async () => {
-  const year = new Date().getFullYear();
-  const sequence = await Sequence.findOneAndUpdate(
-    { _id: `quotation-${year}` },
-    { $inc: { value: 1 } },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  );
-  return `Q-${year}-${String(sequence.value).padStart(5, "0")}`;
-};
 
 const prepareQuotation = async (body, userId, existing) => {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new AppError("A JSON object is required", 400, "INVALID_BODY");
@@ -37,8 +27,9 @@ const prepareQuotation = async (body, userId, existing) => {
   }
   const capacity = Number(body.solarCapacityKw ?? existing?.solarCapacityKw);
   if (!Number.isFinite(capacity) || capacity < 0.1) throw new AppError("Solar capacity must be at least 0.1 kW", 400, "INVALID_CAPACITY");
-  const phase = body.phase ?? existing?.phase ?? "Single";
-  if (!["Single", "Three"].includes(phase)) throw new AppError("Choose a valid phase", 400, "INVALID_PHASE");
+  const requestedPhase = body.phase ?? existing?.phase ?? "Single phase";
+  const phase = ({ Single: "Single phase", Three: "Three phase" })[requestedPhase] ?? requestedPhase;
+  if (!["Single phase", "Three phase"].includes(phase)) throw new AppError("Choose a valid phase", 400, "INVALID_PHASE");
   const validForDays = Number(body.validForDays ?? existing?.validForDays ?? 15);
   if (!Number.isInteger(validForDays) || validForDays < 1) throw new AppError("Validity must be at least one day", 400, "INVALID_VALIDITY");
 
@@ -129,7 +120,7 @@ const prepareQuotation = async (body, userId, existing) => {
   if (values.status === "Sent" && !existing?.sentAt) values.sentAt = new Date();
   if (values.status === "Accepted" && !existing?.acceptedAt) values.acceptedAt = new Date();
   if (!existing) {
-    values.quotationNumber = await nextNumber();
+    values.quotationNumber = await nextSequence("Q", "quotation");
     values.createdBy = userId;
   }
   return values;
@@ -187,7 +178,7 @@ export const deleteQuotation = asyncHandler(async (req, res) => {
   const item = await Quotation.findOneAndUpdate(
     { _id: req.params.id, isActive: { $ne: false } },
     { $set: { isActive: false } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!item) throw new AppError("Quotation not found", 404, "QUOTATION_NOT_FOUND");
   if (item.lead) await Lead.updateOne({ _id: item.lead }, { $pull: { quotations: item._id } });

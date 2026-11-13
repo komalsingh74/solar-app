@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import Loader from "@/components/common/Loader";
 
 export const darkBtn = "h-10 rounded-xl bg-slate-950 px-4 text-white shadow-sm hover:bg-slate-800";
 export const outBtn = "h-10 rounded-xl border-slate-200 px-4";
@@ -32,7 +33,7 @@ export function SideSheet({ open, onOpenChange, title, description, error, saveL
           {error && <span className="text-sm text-muted-foreground sm:mr-auto">{error}</span>}
           <div className="flex gap-3">
             <Button variant="outline" size="lg" className={`${outBtn} flex-1 sm:flex-none`} disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button size="lg" className={`${darkBtn} flex-1 sm:flex-none`} disabled={Boolean(error) || busy} onClick={onSave}>{busy ? "Saving..." : saveLabel}</Button>
+            <Button size="lg" className={`${darkBtn} flex-1 sm:flex-none`} disabled={Boolean(error) || busy} onClick={onSave}>{busy ? <Loader type="inline" size="sm" text="Saving..." className="!text-white" /> : saveLabel}</Button>
           </div>
         </SheetFooter>
       </SheetContent>

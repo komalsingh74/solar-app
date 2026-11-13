@@ -15,7 +15,6 @@ import {
   SectionTitle,
   StatCard,
   StatGrid,
-  TableFooter,
   TableToolbar,
   inputCls,
   inr,
@@ -23,6 +22,8 @@ import {
 } from "@/components/erp/erp-ui";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const stages = ["Documents", "Applied", "Inspection", "Net meter", "Commissioned", "Subsidy received"];
 const schemes = ["PM Surya Ghar", "PM-KUSUM", "State subsidy", "No subsidy"];
@@ -93,6 +94,7 @@ export default function SubsidyPage() {
     const q = query.trim().toLowerCase();
     return !q || [a.customer, a.appNo, a.id, a.discom].some((v) => v.toLowerCase().includes(q));
   });
+  const pagination = usePagination(visible, { resetKey: `${stageFilter}|${query}` });
 
   const advance = async (application: App) => {
     const nextStage = stages[application.stage + 1];
@@ -151,7 +153,6 @@ export default function SubsidyPage() {
       />
 
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Card className="p-5 text-sm text-slate-500">Loading applications…</Card>}
       <StatGrid>
         <StatCard dark label="Applications in progress" value={String(inProgress.length)} sub={`${apps.length} total tracked`} icon={Landmark} />
         <StatCard label="Subsidy pending" value={inr(pendingAmt)} sub="Expected from portal / DISCOM" icon={Banknote} tint="bg-amber-50 text-amber-600" />
@@ -217,7 +218,8 @@ export default function SubsidyPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visible.map((a) => {
+              {loading && visible.length === 0 && <tr><td colSpan={6} className="p-0"><TableSkeleton rows={5} columns={6} embedded /></td></tr>}
+              {pagination.pageItems.map((a) => {
                 const done = a.stage === 5;
                 const isStuck = !done && a.daysInStage > STUCK_AFTER_DAYS;
                 return (
@@ -277,11 +279,11 @@ export default function SubsidyPage() {
               })}
             </tbody>
           </table>
-          {visible.length === 0 && (
+          {!loading && visible.length === 0 && (
             <EmptyState icon={Landmark} title="No applications found" text="Change the stage filter or add a new application." />
           )}
         </div>
-        <TableFooter shown={visible.length} total={apps.length} />
+        <DataPagination {...pagination.props} itemLabel="applications" />
       </Card>
 
       {open && (

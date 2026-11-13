@@ -68,7 +68,7 @@ export const createFollowUp = asyncHandler(async (req, res) => {
   const match = await findPhoneMatch(call.normalizedFrom);
   const values = { phone: call.from, dueAt: due, assignedTo: match?.assignedTo || req.auth.userId, linkedTo: match?.type || "Unknown", linkedId: match?.id || null, notes: "Callback missed inbound call", createdBy: req.auth.userId };
   const existing = await FollowUp.exists({ callLogId: call._id });
-  const item = await FollowUp.findOneAndUpdate({ callLogId: call._id }, { $setOnInsert: { callLogId: call._id, ...values } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  const item = await FollowUp.findOneAndUpdate({ callLogId: call._id }, { $setOnInsert: { callLogId: call._id, ...values } }, { upsert: true, returnDocument: "after", setDefaultsOnInsert: true });
   res.status(existing ? 200 : 201).json({ success: true, data: { item, alreadyExisted: Boolean(existing) } });
 });
 
@@ -85,7 +85,7 @@ export const setFollowUpStatus = asyncHandler(async (req, res) => {
   if (!["pending", "completed", "cancelled"].includes(status)) throw new AppError("Status must be pending, completed or cancelled", 400, "INVALID_STATUS");
   const filter = { _id: req.params.id };
   if (!["Admin", "SuperAdmin"].includes(req.auth.role)) filter.$or = [{ assignedTo: req.auth.userId }, { createdBy: req.auth.userId }];
-  const item = await FollowUp.findOneAndUpdate(filter, { $set: { status, completedAt: status === "completed" ? new Date() : null } }, { new: true, runValidators: true });
+  const item = await FollowUp.findOneAndUpdate(filter, { $set: { status, completedAt: status === "completed" ? new Date() : null } }, { returnDocument: "after", runValidators: true });
   if (!item) throw new AppError("Callback task not found", 404, "FOLLOW_UP_NOT_FOUND");
   res.json({ success: true, data: { item } });
 });

@@ -6,18 +6,29 @@ const { Schema } = mongoose;
 const leadSchema = new Schema(
   {
     // ==================================
-    // 1. BASIC LEAD DETAILS
+    // 1. LEAD IDENTIFICATION
+    // ==================================
+
+    leadCode: {
+      type: String,
+      required: true,
+      trim: true,
+      unique: true,
+    },
+
+    // ==================================
+    // 2. BASIC LEAD DETAILS
     // ==================================
 
     name: {
       type: String,
-      required: true,
+      required: [true, "Lead name is required"],
       trim: true,
     },
 
     phone: {
       type: String,
-      required: true,
+      required: [true, "Phone number is required"],
       trim: true,
     },
 
@@ -47,7 +58,7 @@ const leadSchema = new Schema(
     },
 
     // ==================================
-    // 2. LEAD SOURCE & ASSIGNMENT
+    // 3. LEAD SOURCE & ASSIGNMENT
     // ==================================
 
     source: {
@@ -63,7 +74,7 @@ const leadSchema = new Schema(
     },
 
     // ==================================
-    // 3. LEAD PIPELINE
+    // 4. LEAD PIPELINE
     // ==================================
 
     stage: {
@@ -82,7 +93,7 @@ const leadSchema = new Schema(
     },
 
     // ==================================
-    // 4. SOLAR REQUIREMENTS
+    // 5. SOLAR REQUIREMENTS
     // ==================================
 
     systemSizeKw: {
@@ -133,21 +144,18 @@ const leadSchema = new Schema(
       default: "",
     },
 
-    // ==================================
-    // 5. QUOTATION DETAILS
-    // ==================================
-
-    quotations: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Quotation",
-      },
-    ],
-
     quotationAmount: {
       type: Number,
       min: 0,
       default: null,
+    },
+
+    nextFollowUp: {
+      date: { type: Date, default: null },
+      type: { type: String, enum: ["Call", "WhatsApp", "Visit", "Email"], default: "Call" },
+      priority: { type: String, enum: ["Low", "Medium", "High"], default: "Medium" },
+      reminder: { type: Boolean, default: false },
+      notes: { type: String, trim: true, default: "" },
     },
 
     // ==================================
@@ -165,6 +173,11 @@ const leadSchema = new Schema(
       ref: "SolarProject",
       default: null,
     },
+
+    quotations: [{
+      type: Schema.Types.ObjectId,
+      ref: "Quotation",
+    }],
 
     convertedAt: {
       type: Date,
@@ -191,6 +204,12 @@ const leadSchema = new Schema(
       required: true,
     },
 
+    updatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -206,20 +225,33 @@ const leadSchema = new Schema(
 // INDEXES
 // ==================================
 
+// Unique lead code
+leadSchema.index(
+  { leadCode: 1 },
+  { unique: true }
+);
+
 // Pipeline filtering
-leadSchema.index({ stage: 1 });
+leadSchema.index({ stage: 1, createdAt: -1 });
 
 // Employee-wise lead filtering
 leadSchema.index({
   assignedEmployee: 1,
   stage: 1,
+  createdAt: -1,
 });
 
-// Search by phone
+// Phone search
 leadSchema.index({ phone: 1 });
+
+// Lead source filtering
+leadSchema.index({ source: 1 });
 
 // Converted customer lookup
 leadSchema.index({ customerId: 1 });
+
+// Project lookup
+leadSchema.index({ projectId: 1 });
 
 // Latest leads
 leadSchema.index({ createdAt: -1 });

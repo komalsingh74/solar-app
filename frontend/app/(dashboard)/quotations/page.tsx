@@ -14,6 +14,9 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { showError } from "@/lib/toast";
 import api from "@/lib/api";
 import { useCustomers } from "@/components/crm/customer-store";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import Loader from "@/components/common/Loader";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 type Item = { id: string; name: string; qty: number; rate: number };
 type Quote = { id: string; no: string; customerId: string; customer: string; kw: number; phase: string; items: Item[]; discount: number; gst: number; validDays: number; status: string; date: string; notes: string };
@@ -30,7 +33,7 @@ const calc = (q: Quote) => {
   const gst = ((sub - disc) * q.gst) / 100;
   return { sub, disc, gst, total: sub - disc + gst };
 };
-const blank = (): Quote => ({ id: "", no: "New quotation", customerId: "", customer: "", kw: 5, phase: "Single", items: [], discount: 0, gst: 0, validDays: 15, status: "Draft", date: new Date().toISOString().slice(0, 10), notes: "" });
+const blank = (): Quote => ({ id: "", no: "New quotation", customerId: "", customer: "", kw: 5, phase: "Single phase", items: [], discount: 0, gst: 0, validDays: 15, status: "Draft", date: new Date().toISOString().slice(0, 10), notes: "" });
 const apiToQuote = (record: Record<string, unknown>): Quote => {
   const customer = record.customer && typeof record.customer === "object" ? record.customer as Record<string, unknown> : null;
   const items = Array.isArray(record.items) ? record.items as Record<string, unknown>[] : [];
@@ -40,7 +43,7 @@ const apiToQuote = (record: Record<string, unknown>): Quote => {
     customerId: String(customer?._id ?? record.customer ?? ""),
     customer: String(customer?.customerName ?? ""),
     kw: Number(record.solarCapacityKw ?? 0),
-    phase: String(record.phase ?? "Single"),
+    phase: String(record.phase ?? "Single phase"),
     items: items.map((line) => {
       const product = line.item && typeof line.item === "object" ? line.item as Record<string, unknown> : null;
       return {
@@ -151,6 +154,7 @@ export default function QuotationsPage() {
   }, []);
 
   const rows = useMemo(() => list.filter((x) => (status === "all" || x.status === status) && `${x.customer} ${x.no}`.toLowerCase().includes(q.toLowerCase())), [list, q, status]);
+  const pagination = usePagination(rows, { resetKey: `${q}|${status}` });
   const quoted = list.reduce((a, x) => a + calc(x).total, 0);
   const t = calc(draft);
   const vt = calc(view);
@@ -251,7 +255,7 @@ export default function QuotationsPage() {
             <TableRow>{["Customer", "Capacity", "Date", "Amount", "Status"].map((h) => <TableHead key={h} className="h-12 px-4 text-sm font-semibold text-muted-foreground">{h}</TableHead>)}<TableHead /></TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((x) => (
+            {pagination.pageItems.map((x) => (
               <TableRow key={x.id}>
                 <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={x.customer} /><div><p className="font-semibold">{x.customer}</p><p className="text-sm text-muted-foreground">{x.no}</p></div></div></TableCell>
                 <TableCell className="px-4"><Chip>{x.kw} kW · {x.phase}</Chip></TableCell>
@@ -265,9 +269,11 @@ export default function QuotationsPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && <TableRow><TableCell colSpan={6} className="py-14 text-center text-muted-foreground">{loading ? "Loading quotations..." : "No quotations found. Create a new quotation to get started."}</TableCell></TableRow>}
+            {loading && rows.length === 0 && <TableRow><TableCell colSpan={6} className="p-0"><TableSkeleton rows={5} columns={6} embedded /></TableCell></TableRow>}
+            {!loading && rows.length === 0 && <TableRow><TableCell colSpan={6} className="py-14 text-center text-muted-foreground">No quotations found. Create a new quotation to get started.</TableCell></TableRow>}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="quotations" />
       </Panel>
 
       {/* Add / Edit → wide Sheet */}
@@ -292,7 +298,7 @@ export default function QuotationsPage() {
               </select>
             </label>
             <SelectField label="Solar capacity (kW)" value={String(draft.kw)} options={CAPACITIES} onChange={(v) => set("kw", Number(v))} />
-            <SelectField label="Phase" value={draft.phase} onChange={(v) => set("phase", v)} options={["Single", "Three"]} />
+            <SelectField label="Phase" value={draft.phase} onChange={(v) => set("phase", v)} options={["Single phase", "Three phase"]} />
             <TextField label="Valid for (days)" type="number" min={1} value={draft.validDays} onChange={(v) => set("validDays", Number(v))} />
             <SelectField label="Status" value={draft.status} onChange={(v) => set("status", v)} options={STATUSES} />
             <p className="text-sm text-muted-foreground sm:col-span-2">Select panel and inverter items for this capacity in the Items tab.</p>
@@ -333,7 +339,7 @@ export default function QuotationsPage() {
             <span className="text-sm font-bold sm:mr-auto">{draft.customer.trim() ? `Total ${inr(t.total)}` : <span className="font-normal text-muted-foreground">Customer name is required.</span>}</span>
             <div className="flex gap-3">
               <Button variant="outline" size="lg" className="h-10 flex-1 rounded-xl border-slate-200 px-4 sm:flex-none" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button size="lg" className="h-10 flex-1 rounded-xl bg-slate-950 px-4 text-white shadow-sm hover:bg-slate-800 sm:flex-none" disabled={!draft.customerId || !draft.items.length || draft.items.some((item) => !item.id || item.qty <= 0) || saving} onClick={() => void save()}>{saving ? "Saving..." : "Save quotation"}</Button>
+              <Button size="lg" className="h-10 flex-1 rounded-xl bg-slate-950 px-4 text-white shadow-sm hover:bg-slate-800 sm:flex-none" disabled={!draft.customerId || !draft.items.length || draft.items.some((item) => !item.id || item.qty <= 0) || saving} onClick={() => void save()}>{saving ? <Loader type="inline" size="sm" text="Saving quotation..." className="!text-white" /> : "Save quotation"}</Button>
             </div>
           </SheetFooter>
         </SheetContent>
@@ -382,6 +388,3 @@ export default function QuotationsPage() {
     </div>
   );
 }
-
-
-

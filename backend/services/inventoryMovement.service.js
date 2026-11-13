@@ -8,7 +8,7 @@ const changeBalance = async (item, warehouse, amount, userId) => {
     const balance = await StockBalance.findOneAndUpdate(
       { item, warehouse, quantity: { $gte: -amount } },
       { $inc: { quantity: amount }, $set: { updatedBy: userId } },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!balance) throw new AppError("Insufficient stock at the selected location", 409, "INSUFFICIENT_STOCK");
     return;
@@ -17,7 +17,7 @@ const changeBalance = async (item, warehouse, amount, userId) => {
     await StockBalance.findOneAndUpdate(
       { item, warehouse },
       { $inc: { quantity: amount }, $set: { updatedBy: userId } },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
     );
   } catch (error) {
     if (error?.code !== 11000) throw error;

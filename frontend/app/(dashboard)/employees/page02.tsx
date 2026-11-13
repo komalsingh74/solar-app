@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const certTone: Record<string, Tone> = { Valid: "green", Expiring: "amber", Expired: "red", "—": "slate" };
 const mask = (s: string) => (s ? "••••" + s.slice(-4) : "—");
@@ -26,6 +27,7 @@ export default function EmployeesPage() {
   const view = s.employees.find((e) => e.id === viewId);
 
   const rows = useMemo(() => s.employees.filter((e) => (dept === "all" || e.dept === dept) && `${e.name} ${e.code} ${e.phone} ${e.designation}`.toLowerCase().includes(q.toLowerCase())), [s.employees, q, dept]);
+  const pagination = usePagination(rows, { resetKey: `${q}|${dept}` });
   const set = (k: keyof Employee) => (v: string) => setDraft((x) => ({ ...x, [k]: k === "gross" ? Number(v) : v }));
   const openForm = (e: Employee) => { setDraft({ ...e }); setFormOpen(true); };
   const error = !draft.name.trim() || !draft.phone.trim() ? "Name and phone are required." : !(draft.gross > 0) ? "Enter monthly gross salary (Payroll & bank tab)." : "";
@@ -63,7 +65,7 @@ export default function EmployeesPage() {
         <Table>
           <TableHeader className="bg-slate-50/70"><TableRow>{["Employee", "Department", "Reports to", "Shift", "Joined", "Certificates", "Status"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow></TableHeader>
           <TableBody>
-            {rows.map((e) => (
+            {pagination.pageItems.map((e) => (
               <TableRow key={e.id}>
                 <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><div><p className="font-semibold">{e.name}</p><p className="text-sm text-muted-foreground">{e.code} · {e.designation}</p></div></div></TableCell>
                 <TableCell className="px-4"><Chip>{e.dept}</Chip></TableCell>
@@ -81,6 +83,7 @@ export default function EmployeesPage() {
             {rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No employees match.</TableCell></TableRow>}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="employees" />
       </Panel>
 
       <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit employee" : "New employee"} description="This record feeds attendance, payroll, shifts and crews." error={error} saveLabel="Save employee" onSave={save}>

@@ -4,7 +4,10 @@ import ProductCategory from "../../models/ProductCategory.js";
 import Quotation from "../../models/quotation.js";
 import AppError from "../../utils/AppError.js";
 import asyncHandler from "../../utils/asyncHandler.js";
+import normalizeValue from "../../utils/normalizeValue.js";
 import createMasterCrudHandlers from "../../services/masters/masterCrud.service.js";
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const itemFields = [
   "itemName", "sku", "hsnCode", "unit", "status", "unitPrice", "gstRate", "minimumStock",
@@ -15,6 +18,12 @@ const itemHandlers = createMasterCrudHandlers({
   searchFields: ["itemName", "sku", "hsnCode"],
   fields: itemFields,
   populate: { path: "categoryId", select: "categoryName" },
+  duplicate: {
+    field: "sku",
+    normalizedField: "normalizedSKU",
+    format: "upper",
+    message: "An item with this SKU already exists",
+  },
   buildFilter: async (req) => {
     if (typeof req.query.category !== "string" || !req.query.category.trim()) return {};
     const category = await ProductCategory.findOne({
@@ -35,14 +44,29 @@ const itemHandlers = createMasterCrudHandlers({
         throw new AppError("Category is required", 400, "INVALID_CATEGORY");
       }
       const categoryName = body.categoryName.trim();
-      const category = await ProductCategory.findOneAndUpdate(
-        { categoryName },
-        {
-          $setOnInsert: { categoryName, createdBy: userId },
-          $set: { updatedBy: userId },
-        },
-        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
-      );
+      const normalizedName = normalizeValue(categoryName);
+      let category = await ProductCategory.findOne({
+        $or: [
+          { normalizedName },
+          { categoryName: new RegExp(`^${escapeRegex(categoryName)}$`, "i") },
+        ],
+      });
+      if (!category) {
+        try {
+          category = await ProductCategory.findOneAndUpdate(
+            { normalizedName },
+            {
+              $setOnInsert: { categoryName, normalizedName, createdBy: userId },
+              $set: { updatedBy: userId },
+            },
+            { returnDocument: "after", upsert: true, runValidators: true, setDefaultsOnInsert: true }
+          );
+        } catch (error) {
+          if (error.code !== 11000) throw error;
+          category = await ProductCategory.findOne({ normalizedName });
+          if (!category) throw error;
+        }
+      }
       fields.categoryId = category._id;
     } else if (!existing) {
       throw new AppError("Category is required", 400, "INVALID_CATEGORY");
@@ -61,6 +85,7 @@ const itemHandlers = createMasterCrudHandlers({
 });
 
 export const listItems = asyncHandler(itemHandlers.list);
+export const getItem = asyncHandler(itemHandlers.get);
 export const createItem = asyncHandler(itemHandlers.create);
 export const updateItem = asyncHandler(itemHandlers.update);
 export const deleteItem = asyncHandler(itemHandlers.remove);

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Lead from "../models/lead.js";
 import LeadSource from "../models/leadSource.js";
 import User from "../models/userSchema.js";
+import nextSequence from "../services/nextSequence.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 
@@ -69,6 +70,7 @@ const prepareLead = async (body, userId, existing) => {
     }
   }
   if (!existing) values.createdBy = userId;
+  values.updatedBy = userId;
   return values;
 };
 
@@ -111,6 +113,7 @@ export const leadOptions = asyncHandler(async (_req, res) => {
 
 export const createLead = asyncHandler(async (req, res) => {
   const values = await prepareLead(req.body, req.auth.userId, null);
+  values.leadCode = await nextSequence("LEAD");
   const item = await Lead.create(values);
   await item.populate([{ path: "source", select: "sourceName" }, { path: "assignedEmployee", select: "name" }]);
   res.status(201).json({ success: true, data: { item } });
@@ -120,6 +123,8 @@ export const updateLead = asyncHandler(async (req, res) => {
   if (!validId(req.params.id)) throw new AppError("Invalid lead ID", 400, "INVALID_ID");
   const item = await Lead.findOne({ _id: req.params.id, isActive: { $ne: false } });
   if (!item) throw new AppError("Lead not found", 404, "LEAD_NOT_FOUND");
+  // Older CRM records predate lead codes; assign one when first edited.
+  if (!item.leadCode) item.leadCode = await nextSequence("LEAD");
   Object.assign(item, await prepareLead(req.body, req.auth.userId, item), { updatedAt: new Date() });
   await item.save();
   await item.populate([{ path: "source", select: "sourceName" }, { path: "assignedEmployee", select: "name" }]);
@@ -131,7 +136,7 @@ export const deleteLead = asyncHandler(async (req, res) => {
   const item = await Lead.findOneAndUpdate(
     { _id: req.params.id, isActive: { $ne: false } },
     { $set: { isActive: false } },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!item) throw new AppError("Lead not found", 404, "LEAD_NOT_FOUND");
   res.json({ success: true, data: { id: item._id } });

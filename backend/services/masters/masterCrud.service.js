@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import AppError from "../../utils/AppError.js";
+import checkDuplicate from "../../utils/checkDuplicate.js";
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -25,7 +26,43 @@ const assertBody = (body) => {
   }
 };
 
+const applyDuplicateCheck = async (config, fields, body, existing) => {
+  if (!config.duplicate) return;
+
+  const { field, normalizedField, format, message } = config.duplicate;
+  const value = Object.hasOwn(fields, field)
+    ? fields[field]
+    : existing
+      ? existing[field]
+      : body[field];
+  fields[normalizedField] = await checkDuplicate({
+    Model: config.Model,
+    value,
+    field,
+    normalizedField,
+    format,
+    excludeId: existing?._id,
+    message,
+  });
+};
+
 export default function createMasterCrudHandlers(config) {
+  const get = async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      throw new AppError("Invalid resource ID", 400, "INVALID_ID");
+    }
+
+    const item = await config.Model.findById(req.params.id).populate(config.populate || []);
+    if (!item) {
+      throw new AppError("Master record not found", 404, "RESOURCE_NOT_FOUND");
+    }
+
+    const [mappedItem] = config.mapList
+      ? await config.mapList([item])
+      : [item];
+    res.status(200).json({ success: true, data: { item: mappedItem } });
+  };
+
   const list = async (req, res) => {
     const { page, limit } = parsePagination(req.query);
     const filter = config.buildFilter
@@ -84,6 +121,7 @@ export default function createMasterCrudHandlers(config) {
     const fields = config.prepare
       ? await config.prepare(req.body, userId, null)
       : pickFields(req.body, config.fields);
+    await applyDuplicateCheck(config, fields, req.body, null);
     const item = await config.Model.create({
       ...fields,
       createdBy: userId,
@@ -109,6 +147,7 @@ export default function createMasterCrudHandlers(config) {
     const fields = config.prepare
       ? await config.prepare(req.body, req.auth.userId, item)
       : pickFields(req.body, config.fields);
+    await applyDuplicateCheck(config, fields, req.body, item);
     Object.assign(item, fields, { updatedBy: req.auth.userId });
     await item.save();
     if (config.populate) await item.populate(config.populate);
@@ -137,6 +176,7 @@ export default function createMasterCrudHandlers(config) {
   };
 
   return {
+    get,
     list,
     create,
     update,

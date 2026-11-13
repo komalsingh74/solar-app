@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Textarea } from "@/components/ui/textarea";
 
 export type Tone = "green" | "red" | "amber" | "indigo" | "slate";
-const tones: Record<Tone, string> = {
+ const tones: Record<Tone, string> = {
   green: "border-transparent bg-emerald-50 text-emerald-700",
   red: "border-transparent bg-rose-50 text-rose-700",
   amber: "border-transparent bg-amber-50 text-amber-700",
@@ -20,7 +20,7 @@ const tones: Record<Tone, string> = {
 };
 
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
-  return <header className="mb-0 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3"><div><h1 className="text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>{subtitle && <p className="mt-1 text-muted-foreground">{subtitle}</p>}</div>{children && <div className="flex flex-wrap gap-3">{children}</div>}</header>;
+  return <header className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3"><div><h1 className="text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>{subtitle && <p className="mt-1 text-muted-foreground">{subtitle}</p>}</div>{children && <div className="flex flex-wrap gap-3">{children}</div>}</header>;
 }
 export function Panel({ className = "", children }: { className?: string; children: ReactNode }) {
   return <section className={`rounded-2xl border border-slate-200 bg-white text-card-foreground shadow-none ${className}`}>{children}</section>;

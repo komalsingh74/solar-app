@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Eye, Layers, Pencil, Plus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const SAMPLE = 30000;
 const split = (st: Structure, gross: number) => { const basic = Math.round((gross * st.basic) / 100), hra = Math.round((gross * st.hra) / 100), conv = st.conv; return { basic, hra, conv, special: Math.max(0, gross - basic - hra - conv) }; };
@@ -27,6 +28,7 @@ export default function SalaryStructurePage() {
     setOpen(false);
   };
   const users = (n: string) => s.employees.filter((e) => e.structure === n && e.status === "Active").length;
+  const pagination = usePagination(s.structures);
 
   return (
     <div className="!space-y-2">
@@ -44,7 +46,7 @@ export default function SalaryStructurePage() {
         <Table>
           <TableHeader className="bg-slate-50/70"><TableRow>{["Structure", `On ${inr(SAMPLE)} gross`, "Basic", "HRA", "Conveyance", "PF", "ESI", "Employees"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}<TableHead /></TableRow></TableHeader>
           <TableBody>
-            {s.structures.map((st) => { const p = split(st, SAMPLE); return (
+            {pagination.pageItems.map((st) => { const p = split(st, SAMPLE); return (
               <TableRow key={st.id}>
                 <TableCell className="px-4 py-3 font-semibold">{st.name}</TableCell>
                 <TableCell className="px-4 text-sm text-muted-foreground">Basic {inr(p.basic)} · HRA {inr(p.hra)} · Special {inr(p.special)}</TableCell>
@@ -60,6 +62,7 @@ export default function SalaryStructurePage() {
             ); })}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="salary structures" />
       </Panel>
 
       <SideSheet open={open} onOpenChange={setOpen} title={draft.id ? "Edit structure" : "New structure"} description="Special allowance is whatever remains after the other components." error={error} saveLabel="Save structure" onSave={save}>

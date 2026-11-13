@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
+import TableSkeleton from "@/components/common/TableSkeleton";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const TYPES = ["Received", "Issued", "Transfer", "Returned"];
 const STOCK_FILTERS = ["In stock", "Low stock", "Out of stock"];
@@ -102,6 +104,9 @@ export default function InventoryPage() {
     const matchesFilter = tab !== "ledger" || filter === "all" || m.type === filter;
     return matchesTab && matchesFilter && `${m.item} ${m.ref} ${m.by}`.toLowerCase().includes(q.toLowerCase());
   }), [moves, q, filter, tab]);
+  const stockPagination = usePagination(stockRows, { resetKey: `${q}|${filter}` });
+  const warehousePagination = usePagination(warehouseRows, { resetKey: `${q}|${filter}` });
+  const movementPagination = usePagination(moveRows, { resetKey: `${q}|${filter}|${tab}` });
 
   const set = (k: keyof Draft) => (v: string) => setDraft((s) => ({ ...s, [k]: v }));
   const item = items.find((i) => i.id === draft.item);
@@ -145,7 +150,8 @@ export default function InventoryPage() {
             <TableCell className="px-4"><StatusBadge tone={stockTone[level(i)]}>{level(i)}</StatusBadge></TableCell>
           </TableRow>
         ))}
-        {rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">{emptyMessage}</TableCell></TableRow>}
+        {loading && rows.length === 0 && <TableRow><TableCell colSpan={warehouses.length + 5} className="p-0"><TableSkeleton rows={5} columns={warehouses.length + 5} embedded /></TableCell></TableRow>}
+        {!loading && rows.length === 0 && <TableRow><TableCell colSpan={warehouses.length + 5} className="py-14 text-center text-muted-foreground">{emptyMessage}</TableCell></TableRow>}
       </TableBody>
     </Table>
   );
@@ -167,7 +173,8 @@ export default function InventoryPage() {
             <TableCell className="px-4">{m.by}</TableCell>
           </TableRow>
         ))}
-        {rows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">{emptyMessage}</TableCell></TableRow>}
+        {loading && rows.length === 0 && <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></TableCell></TableRow>}
+        {!loading && rows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">{emptyMessage}</TableCell></TableRow>}
       </TableBody>
     </Table>
   );
@@ -189,7 +196,6 @@ export default function InventoryPage() {
       </PageHeader>
 
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
-      {loading && <Panel className="p-5 text-sm text-muted-foreground">Loading inventory…</Panel>}
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard icon={<Boxes size={24} />} value={items.length} label="Items tracked" />
         <StatCard icon={<AlertTriangle size={24} />} value={items.filter((i) => level(i) !== "In stock").length} label="Low / out of stock" />
@@ -220,7 +226,10 @@ export default function InventoryPage() {
             </Select>}
           </div>
 
-          <TabsContent value="stock">{renderStockTable(stockRows, "No items match.")}</TabsContent>
+          <TabsContent value="stock">
+            {renderStockTable(stockPagination.pageItems, "No items match.")}
+            <DataPagination {...stockPagination.props} itemLabel="items" />
+          </TabsContent>
 
           <TabsContent value="ledger">
             <Table>
@@ -228,7 +237,7 @@ export default function InventoryPage() {
                 <TableRow>{["Date", "Item", "Type", "Qty", "Movement", "Reference", "By"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow>
               </TableHeader>
               <TableBody>
-                {moveRows.map((m) => (
+                {movementPagination.pageItems.map((m) => (
                   <TableRow key={m.id}>
                     <TableCell className="px-4 py-3">{fmtDate(m.date)}</TableCell>
                     <TableCell className="px-4 font-semibold">{m.item}</TableCell>
@@ -241,15 +250,17 @@ export default function InventoryPage() {
                     <TableCell className="px-4">{m.by}</TableCell>
                   </TableRow>
                 ))}
-                {moveRows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">No movements match.</TableCell></TableRow>}
+                {loading && moveRows.length === 0 && <TableRow><TableCell colSpan={7} className="p-0"><TableSkeleton rows={5} columns={7} embedded /></TableCell></TableRow>}
+                {!loading && moveRows.length === 0 && <TableRow><TableCell colSpan={7} className="py-14 text-center text-muted-foreground">No movements match.</TableCell></TableRow>}
               </TableBody>
             </Table>
+            <DataPagination {...movementPagination.props} itemLabel="movements" />
           </TabsContent>
           <TabsContent value="warehouses">
             <Table>
               <TableHeader className="bg-slate-50/70"><TableRow>{["Warehouse / location", "Item", "SKU", "Quantity", "Unit"].map((h) => <TableHead key={h} className={thCls}>{h}</TableHead>)}</TableRow></TableHeader>
               <TableBody>
-                {warehouseRows.map(({ id, item: stockItem, location, qty: locationQty }) => (
+                {warehousePagination.pageItems.map(({ id, item: stockItem, location, qty: locationQty }) => (
                   <TableRow key={id}>
                     <TableCell className="px-4 py-3 font-semibold">{location}</TableCell>
                     <TableCell className="px-4">{stockItem.name}</TableCell>
@@ -258,17 +269,28 @@ export default function InventoryPage() {
                     <TableCell className="px-4">{stockItem.unit}</TableCell>
                   </TableRow>
                 ))}
-                {warehouseRows.length === 0 && <TableRow><TableCell colSpan={5} className="py-14 text-center text-muted-foreground">No warehouse stock matches.</TableCell></TableRow>}
+                {loading && warehouseRows.length === 0 && <TableRow><TableCell colSpan={5} className="p-0"><TableSkeleton rows={5} columns={5} embedded /></TableCell></TableRow>}
+                {!loading && warehouseRows.length === 0 && <TableRow><TableCell colSpan={5} className="py-14 text-center text-muted-foreground">No warehouse stock matches.</TableCell></TableRow>}
               </TableBody>
             </Table>
+            <DataPagination {...warehousePagination.props} itemLabel="warehouse stock records" />
           </TabsContent>
-          <TabsContent value="stock-in">{renderMoveTable(moveRows, "No stock receipts match.")}</TabsContent>
-          <TabsContent value="material-issue">{renderMoveTable(moveRows, "No material issues match.")}</TabsContent>
-          <TabsContent value="returns">{renderMoveTable(moveRows, "No stock returns match.")}</TabsContent>
+          <TabsContent value="stock-in">
+            {renderMoveTable(movementPagination.pageItems, "No stock receipts match.")}
+            <DataPagination {...movementPagination.props} itemLabel="stock receipts" />
+          </TabsContent>
+          <TabsContent value="material-issue">
+            {renderMoveTable(movementPagination.pageItems, "No material issues match.")}
+            <DataPagination {...movementPagination.props} itemLabel="material issues" />
+          </TabsContent>
+          <TabsContent value="returns">
+            {renderMoveTable(movementPagination.pageItems, "No stock returns match.")}
+            <DataPagination {...movementPagination.props} itemLabel="stock returns" />
+          </TabsContent>
         </Tabs>
       </Panel>
 
-      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.type === "Received" ? "Record stock receipt" : draft.type === "Issued" ? "Issue material" : draft.type === "Returned" ? "Record stock return" : "Record stock transfer"} description="Warehouse and site stock update automatically when you save." error={error} saveLabel={draft.type === "Received" ? "Save receipt" : draft.type === "Issued" ? "Issue material" : draft.type === "Returned" ? "Save return" : "Save transfer"} onSave={save}>
+      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.type === "Received" ? "Record stock receipt" : draft.type === "Issued" ? "Issue material" : draft.type === "Returned" ? "Record stock return" : "Record stock transfer"} description="Warehouse and site stock update automatically when you save." error={error} busy={saving} saveLabel={draft.type === "Received" ? "Save receipt" : draft.type === "Issued" ? "Issue material" : draft.type === "Returned" ? "Save return" : "Save transfer"} onSave={save}>
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField className="sm:col-span-2" label="Movement type" value={draft.type} onChange={set("type")} options={TYPES} />
           <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold">Item</label><Select value={draft.item} onValueChange={(value) => set("item")(value ?? "")}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Select item" /></SelectTrigger><SelectContent>{items.map((stockItem) => <SelectItem key={stockItem.id} value={stockItem.id}>{stockItem.name} · {stockItem.sku}</SelectItem>)}</SelectContent></Select></div>

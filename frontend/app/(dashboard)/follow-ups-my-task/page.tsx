@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/lib/api";
 import { useCustomers } from "@/components/crm/customer-store";
+import Loader from "@/components/common/Loader";
 
 const TYPES = ["Call", "WhatsApp", "Site visit", "Quotation follow-up", "Payment reminder", "Document collection"];
 const LINKS = ["Lead", "Customer", "Project"];
@@ -287,7 +288,9 @@ export default function FollowUpsPage() {
         {rows.length ? (
           <ul className="divide-y divide-slate-100 border-t border-slate-100">{rows.map((t) => <Row key={t.id} t={t} />)}</ul>
         ) : (
-          <div className="border-t border-slate-100 py-16 text-center text-muted-foreground">{loading ? "Loading follow-ups..." : empty}</div>
+          <div className="flex justify-center border-t border-slate-100 py-16 text-center text-muted-foreground">
+            {loading ? <Loader type="inline" text="Loading follow-ups..." /> : empty}
+          </div>
         )}
       </Panel>
 

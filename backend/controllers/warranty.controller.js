@@ -86,7 +86,7 @@ export const updateWarranty = asyncHandler(async (req, res) => {
 
 export const deleteWarranty = asyncHandler(async (req, res) => {
   if (!validId(req.params.id)) throw new AppError("Invalid warranty ID", 400, "INVALID_ID");
-  const item = await EquipmentWarranty.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { new: true });
+  const item = await EquipmentWarranty.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $set: { isActive: false, updatedBy: req.auth.userId } }, { returnDocument: "after" });
   if (!item) throw new AppError("Warranty record not found", 404, "WARRANTY_NOT_FOUND");
   res.json({ success: true, data: { id: item._id } });
 });

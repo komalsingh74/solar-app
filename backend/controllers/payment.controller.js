@@ -91,7 +91,7 @@ export const savePaymentPlan = asyncHandler(async (req, res) => {
     loanStatus, updatedBy: req.auth.userId,
   };
   const plan = existing
-    ? await PaymentPlan.findOneAndUpdate({ _id: existing._id }, { $set: update }, { new: true, runValidators: true })
+    ? await PaymentPlan.findOneAndUpdate({ _id: existing._id }, { $set: update }, { returnDocument: "after", runValidators: true })
     : await PaymentPlan.create({ ...update, createdBy: req.auth.userId });
   res.json({ success: true, data: { item: plan } });
 });

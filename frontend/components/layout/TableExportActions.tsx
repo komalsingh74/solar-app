@@ -2,7 +2,10 @@
 
 import { Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { showError, showInfo } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
+
+type ExportRow = Record<string, string | number | boolean | null | undefined>;
+type ExportColumn = { key: string; label: string };
 
 function reportName() {
   const title = document.querySelector("main h1")?.textContent?.trim() || "solar-report";
@@ -21,16 +24,60 @@ function getTable() {
   return table;
 }
 
-export default function TableExportActions() {
+export default function TableExportActions({
+  rows,
+  columns,
+}: {
+  rows?: ExportRow[];
+  columns?: ExportColumn[];
+} = {}) {
   const excel = async () => {
+    if (rows && columns) {
+      if (!rows.length) { showInfo("There are no records to export."); return; }
+      try {
+        const XLSX = await import("xlsx");
+        const data = rows.map((row) =>
+          Object.fromEntries(columns.map(({ key, label }) => [label, row[key] ?? ""])),
+        );
+        const sheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, sheet, "Report");
+        XLSX.writeFile(workbook, `${reportName()}.xlsx`);
+        showSuccess("Excel file downloaded successfully.");
+      } catch { showError("Excel export failed. Please try again."); }
+      return;
+    }
+
     const table = getTable();
     if (!table) { showInfo("No table is available to export."); return; }
     try {
       const XLSX = await import("xlsx");
       XLSX.writeFile(XLSX.utils.table_to_book(table, { sheet: "Report" }), `${reportName()}.xlsx`);
+      showSuccess("Excel file downloaded successfully.");
     } catch { showError("Excel export failed. Please try again."); }
   };
   const pdf = async () => {
+    if (rows && columns) {
+      if (!rows.length) { showInfo("There are no records to export."); return; }
+      try {
+        const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+        doc.setFontSize(16);
+        doc.text(document.querySelector("main h1")?.textContent?.trim() || "Report", 40, 36);
+        autoTable(doc, {
+          head: [columns.map(({ label }) => label)],
+          body: rows.map((row) => columns.map(({ key }) => String(row[key] ?? "—").replace(/₹/g, "INR "))),
+          startY: 52,
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 4 },
+          headStyles: { fillColor: [30, 41, 59] },
+        });
+        doc.save(`${reportName()}.pdf`);
+        showSuccess("PDF downloaded successfully.");
+      } catch { showError("PDF export failed. Please try again."); }
+      return;
+    }
+
     const table = getTable();
     if (!table) { showInfo("No table is available to export."); return; }
     try {
@@ -40,6 +87,7 @@ export default function TableExportActions() {
       doc.text(document.querySelector("main h1")?.textContent?.trim() || "Report", 40, 36);
       autoTable(doc, { html: table, startY: 52, theme: "grid", styles: { fontSize: 8, cellPadding: 4 }, headStyles: { fillColor: [30, 41, 59] } });
       doc.save(`${reportName()}.pdf`);
+      showSuccess("PDF downloaded successfully.");
     } catch { showError("PDF export failed. Please try again."); }
   };
 

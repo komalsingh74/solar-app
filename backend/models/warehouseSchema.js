@@ -8,6 +8,10 @@ const warehouseSchema = new mongoose.Schema(
       trim: true,
       maxlength: [100, "Location name cannot exceed 100 characters"],
     },
+    normalizedName: {
+      type: String,
+      select: false,
+    },
 
     type: {
       type: String,
@@ -59,6 +63,14 @@ const warehouseSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
+  }
+);
+
+warehouseSchema.index(
+  { normalizedName: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { normalizedName: { $type: "string" } },
   }
 );
 

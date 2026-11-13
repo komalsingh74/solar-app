@@ -1,5 +1,8 @@
+"use client";
+
 import { PageHeader, Panel } from "@/components/ui/page-layout";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DataPagination, { usePagination } from "@/components/common/data-pagination";
 
 const entries = [
   { time: "Today, 10:42 AM", user: "Sumit Saxena", action: "Updated company settings", module: "Settings" },
@@ -9,6 +12,7 @@ const entries = [
 ];
 
 export default function AuditLogPage() {
+  const pagination = usePagination(entries);
   return (
     <div className="space-y-2">
       <PageHeader title="Audit log" subtitle="Recent activity across your workspace" />
@@ -23,7 +27,7 @@ export default function AuditLogPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {entries.map((entry) => (
+            {pagination.pageItems.map((entry) => (
               <TableRow key={`${entry.time}-${entry.action}`}>
                 <TableCell className="px-4 text-muted-foreground">{entry.time}</TableCell>
                 <TableCell className="px-4 font-medium">{entry.user}</TableCell>
@@ -33,6 +37,7 @@ export default function AuditLogPage() {
             ))}
           </TableBody>
         </Table>
+        <DataPagination {...pagination.props} itemLabel="activities" />
         <p className="border-t border-slate-100 px-4 py-3 text-xs text-muted-foreground">Sample activity for display. Live audit events are not connected yet.</p>
       </Panel>
     </div>
