@@ -4,8 +4,10 @@ const { Schema } = mongoose;
 
 const installationTeamSchema = new Schema({
   teamName: { type: String, required: true, trim: true },
-  lead: { type: Schema.Types.ObjectId, ref: "User", required: true },
-  members: [{ type: Schema.Types.ObjectId, ref: "User" }],
+  lead: { type: Schema.Types.ObjectId, ref: "Employee", required: true },
+  leadUserId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+  members: [{ type: Schema.Types.ObjectId, ref: "Employee" }],
+  memberUserIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
   vehicle: { type: String, trim: true, default: "" },
   skills: { type: String, trim: true, default: "" },
   status: { type: String, enum: ["Available", "On site", "On leave"], default: "Available", index: true },

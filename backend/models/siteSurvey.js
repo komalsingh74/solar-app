@@ -112,8 +112,13 @@ const siteSurveySchema = new Schema(
     // Assigned survey engineer
     engineer: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Employee",
       required: true,
+    },
+    engineerUserId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
 
     siteAddress: {

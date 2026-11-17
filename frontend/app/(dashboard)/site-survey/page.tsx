@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/lib/api";
 import TableSkeleton from "@/components/common/TableSkeleton";
 import DataPagination from "@/components/common/data-pagination";
+import EmployeePicker, { type EmployeeOption } from "@/components/hr/employee-picker";
 
 const STATUSES = ["Scheduled", "Completed", "Rescheduled", "Cancelled"];
 const ROOFS = ["RCC", "Metal Sheet", "Tiled", "Asbestos", "Ground Mount", "Other"];
@@ -40,7 +41,7 @@ type Photo = { id: string; name: string; src: string; lat: number | null; lng: n
 type LogItem = { at: string; text: string };
 
 type Survey = {
-  id: string; customerId: string; engineerId: string; code: string; customer: string; phone: string; address: string; date: string; time: string; engineer: string; status: string;
+  id: string; customerId: string; engineerId: string; engineerSecondary: string; code: string; customer: string; phone: string; address: string; date: string; time: string; engineer: string; status: string;
   cancelReason: string; roofType: string; roofArea: string; shadow: string; load: string; phase: string; units: string; notes: string;
   checklist: Record<string, boolean>; photos: Photo[]; log: LogItem[];
 };
@@ -49,7 +50,7 @@ const logEntry = (text: string): LogItem => ({ at: new Date().toISOString(), tex
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 const blank = (): Survey => ({
-  id: "", customerId: "", engineerId: "", code: "", customer: "", phone: "", address: "", date: d(1), time: "11:00", engineer: "", status: "Scheduled", cancelReason: "",
+  id: "", customerId: "", engineerId: "", engineerSecondary: "", code: "", customer: "", phone: "", address: "", date: d(1), time: "11:00", engineer: "", status: "Scheduled", cancelReason: "",
   roofType: "RCC", roofArea: "", shadow: "None", load: "", phase: "Single phase", units: "", notes: "", checklist: {}, photos: [], log: [],
 });
 
@@ -254,6 +255,7 @@ type Option = { id: string; name: string; phone?: string; address?: string };
 const fromApi = (record: Record<string, unknown>): Survey => {
   const customer = record.customer && typeof record.customer === "object" ? record.customer as Record<string, unknown> : null;
   const engineer = record.engineer && typeof record.engineer === "object" ? record.engineer as Record<string, unknown> : null;
+  const legacyEngineer = record.engineerUserId && typeof record.engineerUserId === "object" ? record.engineerUserId as Record<string, unknown> : null;
   const address = customer?.installationAddress && typeof customer.installationAddress === "object" ? customer.installationAddress as Record<string, unknown> : null;
   const checklist = record.checklist && typeof record.checklist === "object" ? record.checklist as Record<string, boolean> : {};
   const photos = Array.isArray(record.photos) ? record.photos as Photo[] : [];
@@ -261,11 +263,13 @@ const fromApi = (record: Record<string, unknown>): Survey => {
   return {
     ...blank(),
     id: String(record._id ?? ""), customerId: String(customer?._id ?? record.customer ?? ""),
-    engineerId: String(engineer?._id ?? record.engineer ?? ""), code: String(record.surveyNumber ?? ""),
+    engineerId: String(engineer?._id ?? legacyEngineer?._id ?? record.engineer ?? record.engineerUserId ?? ""),
+    engineerSecondary: engineer ? `${String(engineer.employeeCode ?? "")}${engineer.designation ? ` · ${String(engineer.designation)}` : ""}` : "",
+    code: String(record.surveyNumber ?? ""),
     customer: String(customer?.customerName ?? ""), phone: String(record.phone ?? customer?.phone ?? ""),
     address: String(record.siteAddress ?? [address?.address, address?.city].filter(Boolean).join(", ")),
     date: record.visitDate ? new Date(String(record.visitDate)).toISOString().slice(0, 10) : "",
-    time: String(record.visitTime ?? "11:00"), engineer: String(engineer?.name ?? ""),
+    time: String(record.visitTime ?? "11:00"), engineer: String(engineer?.fullName ?? legacyEngineer?.name ?? ""),
     status: String(record.status ?? "Scheduled"), cancelReason: String(record.cancelReason ?? ""),
     roofType: String(record.roofType ?? "RCC"), roofArea: record.shadowFreeAreaSqFt == null ? "" : String(record.shadowFreeAreaSqFt),
     shadow: String(record.shadowOnRoof ?? "None"), load: record.sanctionedLoadKw == null ? "" : String(record.sanctionedLoadKw),
@@ -368,7 +372,7 @@ const ACT_TITLE: Record<ActKind, string> = { complete: "Mark survey completed", 
 export default function SiteSurveysPage() {
   const [list, setList] = useState<Survey[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
-  const [engineers, setEngineers] = useState<Option[]>([]);
+  const [engineers, setEngineers] = useState<EmployeeOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] = useState("");
@@ -414,7 +418,11 @@ export default function SiteSurveysPage() {
       const address = customer.installationAddress && typeof customer.installationAddress === "object" ? customer.installationAddress as Record<string, unknown> : {};
       return { id: String(customer._id), name: String(customer.customerName), phone: String(customer.phone ?? ""), address: [address.address, address.city].filter(Boolean).join(", ") };
     }));
-    setEngineers((options?.engineers ?? []).map((person: Record<string, unknown>) => ({ id: String(person._id), name: String(person.name) })));
+    setEngineers((options?.engineers ?? []).map((person: Record<string, unknown>) => ({
+      id: String(person._id), name: String(person.fullName ?? person.name ?? ""),
+      code: String(person.employeeCode ?? ""), designation: String(person.designation ?? ""),
+      department: String(person.department ?? ""), role: String(person.systemRole ?? ""),
+    })));
     setRequestError("");
   };
 
@@ -479,7 +487,9 @@ export default function SiteSurveysPage() {
     setRequestError("");
     try {
       const payload = {
-        customerId: draft.customerId, engineerId: draft.engineerId, phone: draft.phone.trim(),
+        customerId: draft.customerId,
+        engineerId: engineers.some((engineer) => engineer.id === draft.engineerId) ? draft.engineerId : draft.id ? undefined : draft.engineerId,
+        phone: draft.phone.trim(),
         siteAddress: draft.address.trim(), date: draft.date, time: draft.time, status: draft.status,
         cancelReason: draft.cancelReason, roofType: draft.roofType, shadowFreeAreaSqFt: draft.roofArea === "" ? null : Number(draft.roofArea),
         shadowOnRoof: draft.shadow, sanctionedLoadKw: draft.load === "" ? null : Number(draft.load),
@@ -618,7 +628,7 @@ export default function SiteSurveysPage() {
           </Select>
           <Select value={engineer || null} onValueChange={(value) => resetPage(setEngineer)(value ?? "")}>
             <SelectTrigger className="h-10 w-[170px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by engineer"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="all">All engineers</SelectItem>{engineers.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}</SelectContent>
+            <SelectContent><SelectItem value="all">All engineers</SelectItem>{engineers.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}{person.code ? ` · ${person.code}` : ""}{person.designation ? ` · ${person.designation}` : ""}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={sort || null} onValueChange={(value) => setSort(value ?? "")}>
             <SelectTrigger className="h-10 w-[170px] rounded-xl border-slate-200 bg-slate-50" aria-label="Sort surveys"><SelectValue /></SelectTrigger>
@@ -694,7 +704,10 @@ export default function SiteSurveysPage() {
               </Select>
             </div>
             <TextField label="Phone" type="tel" value={draft.phone} onChange={set("phone")} placeholder="10-digit mobile number" />
-            <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Engineer</label><Select value={draft.engineerId} onValueChange={(id) => { const person = engineers.find((entry) => entry.id === id); setDraft((current) => ({ ...current, engineerId: id ?? "", engineer: person?.name ?? "" })); }}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select engineer" /></SelectTrigger><SelectContent>{engineers.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}</SelectContent></Select></div>
+            <EmployeePicker label="Engineer" value={draft.engineerId} options={engineers} fallbackName={draft.engineer} fallbackSecondary={draft.engineerSecondary} onChange={(engineerId) => {
+              const person = engineers.find((entry) => entry.id === engineerId);
+              setDraft((current) => ({ ...current, engineerId, engineer: person?.name ?? "", engineerSecondary: person ? `${person.code}${person.designation ? ` · ${person.designation}` : ""}` : "" }));
+            }} />
             <TextField className="sm:col-span-2" label="Site address" value={draft.address} onChange={set("address")} placeholder="House no, area, city" />
             <TextField label="Visit date" type="date" value={draft.date} onChange={set("date")} />
             <TextField label="Time" type="time" value={draft.time} onChange={set("time")} />

@@ -13,43 +13,55 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import api from "@/lib/api";
 import { useCustomers } from "@/components/crm/customer-store";
 import Loader from "@/components/common/Loader";
+import EmployeePicker, { type EmployeeOption } from "@/components/hr/employee-picker";
 
-const TYPES = ["Call", "WhatsApp", "Site visit", "Quotation follow-up", "Payment reminder", "Document collection"];
-const LINKS = ["Lead", "Customer", "Project"];
+const TYPES = ["Call", "WhatsApp", "Visit", "Email", "Site visit", "Quotation follow-up", "Payment reminder", "Document collection"];
+const LINKS = ["Lead", "Customer", "Project", "IVR"];
 const PRIORITIES = ["High", "Medium", "Low"];
-const typeIcon = { Call: Phone, WhatsApp: MessageCircle, "Site visit": MapPin, "Quotation follow-up": Send, "Payment reminder": IndianRupee, "Document collection": FileText } as const;
+const typeIcon = { Call: Phone, WhatsApp: MessageCircle, Visit: MapPin, Email: FileText, "Site visit": MapPin, "Quotation follow-up": Send, "Payment reminder": IndianRupee, "Document collection": FileText } as const;
 const prioTone: Record<string, Tone> = { High: "red", Medium: "amber", Low: "slate" };
 
 type Log = { text: string; at: string };
-type Task = { id: string; title: string; type: string; linkKind: string; linkId: string; linkName: string; phone: string; priority: string; due: string; time: string; assignee: string; assigneeId: string; status: "Open" | "Done"; notes: string; doneOn?: string; log: Log[] };
+type Task = { id: string; title: string; type: string; linkKind: string; linkId: string; linkName: string; phone: string; priority: string; due: string; time: string; assignee: string; assigneeId: string; assigneeSecondary: string; status: "Open" | "Done"; notes: string; reminder: boolean; stage: string; source: string; doneOn?: string; log: Log[] };
 type EntityOption = { id: string; name: string; phone: string };
-type EmployeeOption = { id: string; name: string };
 
-const blank = (): Task => ({ id: "", title: "", type: "Call", linkKind: "Lead", linkId: "", linkName: "", phone: "", priority: "Medium", due: d(0), time: "11:00", assignee: "", assigneeId: "", status: "Open", notes: "", log: [] });
+const blank = (): Task => ({ id: "", title: "", type: "Call", linkKind: "Lead", linkId: "", linkName: "", phone: "", priority: "Medium", due: d(0), time: "11:00", assignee: "", assigneeId: "", assigneeSecondary: "", status: "Open", notes: "", reminder: false, stage: "", source: "", log: [] });
 
 const bucket = (t: Task) => (t.status === "Done" ? "done" : t.due < d(0) ? "overdue" : t.due === d(0) ? "today" : "upcoming");
 const daysLate = (t: Task) => Math.round((new Date(d(0)).getTime() - new Date(t.due).getTime()) / 864e5);
 const digits = (p: string) => { const x = p.replace(/\D/g, ""); return x.length === 10 ? "91" + x : x; };
 const apiToTask = (record: Record<string, unknown>): Task => {
   const assignee = record.assignedTo && typeof record.assignedTo === "object" ? record.assignedTo as Record<string, unknown> : null;
+  const legacyAssignee = record.assignedToUserId && typeof record.assignedToUserId === "object" ? record.assignedToUserId as Record<string, unknown> : null;
+  const lead = record.leadId && typeof record.leadId === "object" ? record.leadId as Record<string, unknown> : null;
+  const customer = record.customerId && typeof record.customerId === "object" ? record.customerId as Record<string, unknown> : null;
   const dueAt = new Date(String(record.dueAt ?? ""));
+  const sourceKind = record.source === "Lead" ? "Lead" : record.source === "Customer" ? "Customer" : "";
+  const rawLinkedTo = String(record.linkedTo || sourceKind);
+  const linkedTo = ["Lead", "Customer", "Project"].includes(rawLinkedTo) ? rawLinkedTo : record.source === "IVR" ? "IVR" : rawLinkedTo;
+  const linkId = record.linkedId ?? lead?._id ?? customer?._id ?? "";
+  const linkName = String(record.linkName || lead?.name || customer?.customerName || record.phone || "");
   return {
     ...blank(),
     id: String(record._id ?? ""),
-    title: String(record.title ?? ""),
+    title: String(record.title || (lead?.name ? `Follow-up: ${lead.name}` : customer?.customerName ? `Follow-up: ${customer.customerName}` : record.phone || "Follow-up task")),
     type: String(record.type ?? "Call"),
-    linkKind: String(record.linkedTo ?? "Lead"),
-    linkId: String(record.linkedId ?? ""),
-    linkName: String(record.linkName ?? ""),
+    linkKind: ["Lead", "Customer", "Project"].includes(linkedTo) ? linkedTo : "Lead",
+    linkId: String(linkId && typeof linkId === "object" ? (linkId as Record<string, unknown>)._id ?? "" : linkId),
+    linkName,
     phone: String(record.phone ?? ""),
     priority: String(record.priority ?? "Medium"),
     due: Number.isNaN(dueAt.getTime()) ? "" : `${dueAt.getFullYear()}-${String(dueAt.getMonth() + 1).padStart(2, "0")}-${String(dueAt.getDate()).padStart(2, "0")}`,
-    time: String(record.time ?? "11:00"),
-    assignee: String(assignee?.name ?? ""),
-    assigneeId: String(assignee?._id ?? record.assignedTo ?? ""),
+    time: Number.isNaN(dueAt.getTime()) ? "11:00" : `${String(dueAt.getHours()).padStart(2, "0")}:${String(dueAt.getMinutes()).padStart(2, "0")}`,
+    assignee: String(assignee?.fullName ?? legacyAssignee?.name ?? ""),
+    assigneeId: String(assignee?._id ?? legacyAssignee?._id ?? record.assignedTo ?? record.assignedToUserId ?? ""),
+    assigneeSecondary: assignee ? `${String(assignee.employeeCode ?? "")}${assignee.designation ? ` · ${String(assignee.designation)}` : ""}` : "",
     status: record.status === "completed" ? "Done" : "Open",
     doneOn: record.completedAt ? String(record.completedAt).slice(0, 10) : undefined,
     notes: String(record.notes ?? ""),
+    reminder: Boolean(record.reminder),
+    stage: String(record.stage ?? lead?.stage ?? ""),
+    source: String(record.source ?? ""),
     log: Array.isArray(record.activity) ? record.activity.map((entry: Record<string, unknown>) => ({
       text: String(entry.text ?? ""),
       at: entry.at ? new Date(String(entry.at)).toLocaleString("en-IN") : "",
@@ -62,7 +74,6 @@ export default function FollowUpsPage() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [leads, setLeads] = useState<EntityOption[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
-  const [currentUserName, setCurrentUserName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] = useState("");
@@ -95,9 +106,12 @@ export default function FollowUpsPage() {
       return pageItems;
     })];
     setTasks(allTasks.filter((item: Record<string, unknown>) => item.status !== "cancelled").map((item: Record<string, unknown>) => apiToTask(item)));
-    setEmployees((optionsResponse.data?.data?.employees ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.name) })));
-    setCurrentUserId(String(userResponse.data?.data?.user?.id ?? userResponse.data?.data?.user?._id ?? ""));
-    setCurrentUserName(String(userResponse.data?.data?.user?.name ?? ""));
+    setEmployees((optionsResponse.data?.data?.employees ?? []).map((item: Record<string, unknown>) => ({
+      id: String(item._id), name: String(item.fullName ?? item.name ?? ""),
+      code: String(item.employeeCode ?? ""), designation: String(item.designation ?? ""),
+      department: String(item.department ?? ""), role: String(item.systemRole ?? ""),
+    })));
+    setCurrentUserId(String(userResponse.data?.data?.user?.employeeId ?? userResponse.data?.data?.user?.id ?? userResponse.data?.data?.user?._id ?? ""));
     const leadItems = leadResponse.data?.data?.items;
     if (!Array.isArray(leadItems)) throw new Error("The server returned an invalid lead list.");
     const leadPages = Number(leadResponse.data?.data?.pagination?.pages) || 1;
@@ -143,8 +157,11 @@ export default function FollowUpsPage() {
       phone: task.phone,
       dueAt,
       time: task.time,
-      assignedTo: task.assigneeId || null,
+      assignedTo: !task.assigneeId ? null : employees.some((employee) => employee.id === task.assigneeId) ? task.assigneeId : task.id ? undefined : null,
       notes: task.notes,
+      reminder: task.reminder,
+      stage: task.stage,
+      source: task.source || undefined,
       ...extra,
     };
     const response = task.id
@@ -176,7 +193,7 @@ export default function FollowUpsPage() {
   const doneAndNext = async (task: Task) => {
     if (!await updateTask(task.id, {}, { status: "completed" })) return;
     setViewId(null);
-    openForm({ ...blank(), title: `Follow up: ${task.linkName}`, type: task.type, linkKind: task.linkKind, linkId: task.linkId, linkName: task.linkName, phone: task.phone, assignee: task.assignee, assigneeId: task.assigneeId, due: d(3) });
+    openForm({ ...blank(), title: `Follow up: ${task.linkName}`, type: task.type, linkKind: task.linkKind, linkId: task.linkId, linkName: task.linkName, phone: task.phone, assignee: task.assignee, assigneeId: employees.some((employee) => employee.id === task.assigneeId) ? task.assigneeId : "", assigneeSecondary: task.assigneeSecondary, due: d(3) });
   };
 
   const set = (k: keyof Task) => (v: string) => setDraft((s) => ({ ...s, [k]: v }));
@@ -226,8 +243,9 @@ export default function FollowUpsPage() {
             <span className="inline-flex items-center gap-1"><Icon size={14} />{t.type}</span><span>·</span><span>{t.linkKind}: {t.linkName}</span>
           </p>
         </div>
-        <div className="hidden items-center gap-2 lg:flex"><Avatar name={t.assignee} /><span className="text-sm">{t.assignee.split(" ")[0]}</span></div>
+        <div className="hidden min-w-36 items-center gap-2 lg:flex"><Avatar name={t.assignee} /><span className="min-w-0"><span className="block truncate text-sm font-medium">{t.assignee || "Unassigned"}</span>{t.assigneeSecondary && <span className="block truncate text-xs text-muted-foreground">{t.assigneeSecondary}</span>}</span></div>
         <StatusBadge tone={prioTone[t.priority]}>{t.priority}</StatusBadge>
+        <StatusBadge tone={done ? "green" : "indigo"}>{done ? "Completed" : "Pending"}</StatusBadge>
         <div className="w-28 text-right text-sm">
           {done ? <p className="text-muted-foreground">Done {dayLabel(t.doneOn ?? "")}</p> : <>
             <p className={`font-medium ${late ? "text-red-600" : bucket(t) === "today" ? "text-indigo-600" : ""}`}>{late ? `${daysLate(t)}d overdue` : dayLabel(t.due)}</p>
@@ -250,7 +268,10 @@ export default function FollowUpsPage() {
   return (
     <div className="!space-y-2">
       <PageHeader title="Follow-ups / my tasks" subtitle="Every call, visit and reminder you owe a lead, customer or project, in one list.">
-        <Button size="lg" className={darkBtn} disabled={loading} onClick={() => openForm({ ...blank(), assignee: currentUserName, assigneeId: currentUserId })}><Plus /> Add task</Button>
+        <Button size="lg" className={darkBtn} disabled={loading} onClick={() => {
+          const currentEmployee = employees.find((employee) => employee.id === currentUserId);
+          openForm({ ...blank(), assignee: currentEmployee?.name ?? "", assigneeId: currentEmployee?.id ?? "" });
+        }}><Plus /> Add task</Button>
       </PageHeader>
 
       {requestError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{requestError}</p>}
@@ -300,7 +321,7 @@ export default function FollowUpsPage() {
           <SelectField label="Type" value={draft.type} onChange={set("type")} options={TYPES} />
           <SelectField label="Priority" value={draft.priority} onChange={set("priority")} options={PRIORITIES} />
           <SelectField label="Linked to" value={draft.linkKind} onChange={(value) => setDraft((current) => ({ ...current, linkKind: value, linkId: "", linkName: "", phone: "" }))} options={LINKS} />
-          {draft.linkKind !== "Project"
+          {draft.linkKind === "Lead" || draft.linkKind === "Customer"
             ? <label className="flex flex-col gap-2 text-sm font-semibold text-slate-800">{draft.linkKind} name
                 <select value={draft.linkId} onChange={(event) => {
                   const options = draft.linkKind === "Lead" ? leads : customers;
@@ -311,18 +332,15 @@ export default function FollowUpsPage() {
                   {(draft.linkKind === "Lead" ? leads : customers).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                 </select>
               </label>
-            : <TextField label="Project name" value={draft.linkName} onChange={set("linkName")} placeholder="Project name" />}
+            : <TextField label={draft.linkKind === "IVR" ? "IVR contact" : "Project name"} value={draft.linkName} onChange={set("linkName")} placeholder={draft.linkKind === "IVR" ? "IVR contact" : "Project name"} />}
           <TextField label="Phone" type="tel" value={draft.phone} onChange={set("phone")} />
-          <label className="flex flex-col gap-2 text-sm font-semibold text-slate-800">Assigned to
-            <select value={draft.assigneeId} onChange={(event) => {
-              const selected = employees.find((employee) => employee.id === event.target.value);
-              setDraft((current) => ({ ...current, assigneeId: selected?.id ?? "", assignee: selected?.name ?? "" }));
-            }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal">
-              <option value="">Unassigned</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
-            </select>
-          </label>
+          <EmployeePicker label="Assigned to" value={draft.assigneeId} options={employees} includeUnassigned fallbackName={draft.assignee} fallbackSecondary={draft.assigneeSecondary} onChange={(assigneeId) => {
+            const selected = employees.find((employee) => employee.id === assigneeId);
+            setDraft((current) => ({ ...current, assigneeId, assignee: selected?.name ?? "", assigneeSecondary: selected ? `${selected.code}${selected.designation ? ` · ${selected.designation}` : ""}` : "" }));
+          }} />
           <TextField label="Due date" type="date" value={draft.due} onChange={set("due")} />
           <TextField label="Time" type="time" value={draft.time} onChange={set("time")} />
+          <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.reminder} onChange={(event) => setDraft((current) => ({ ...current, reminder: event.target.checked }))} className="h-4 w-4 rounded border-slate-300" />Reminder</label>
           <div className="sm:col-span-2"><AreaField label="Notes" rows={4} value={draft.notes} onChange={set("notes")} placeholder="What to say, what to carry, what the customer asked…" /></div>
         </div>
       </SideSheet>
@@ -332,7 +350,7 @@ export default function FollowUpsPage() {
           footer={<>
             <Button variant="outline" size="lg" className={outBtn} onClick={() => setViewId(null)}>Close</Button>
             <Button variant="outline" size="lg" className={outBtn} onClick={() => { setViewId(null); openForm(view); }}><Pencil /> Edit</Button>
-            <Button variant="outline" size="lg" className={outBtn} onClick={() => void removeTask(view)}><AlertTriangle /> Delete</Button>
+            {view.linkKind !== "Lead" && <Button variant="outline" size="lg" className={outBtn} onClick={() => void removeTask(view)}><AlertTriangle /> Delete</Button>}
             {view.status === "Open"
               ? <>
                   <Button variant="outline" size="lg" className={outBtn} onClick={() => complete(view.id)}><Check /> Mark done</Button>
@@ -345,7 +363,9 @@ export default function FollowUpsPage() {
               <KV label="Status"><StatusBadge tone={view.status === "Done" ? "green" : bucket(view) === "overdue" ? "red" : "indigo"}>{view.status === "Done" ? "Completed" : bucket(view) === "overdue" ? "Overdue" : "Open"}</StatusBadge></KV>
               <KV label="Priority"><StatusBadge tone={prioTone[view.priority]}>{view.priority}</StatusBadge></KV>
               <KV label="Due">{dayLabel(view.due)}, {view.time}</KV>
-              <KV label="Assigned to">{view.assignee}</KV>
+              <KV label="Assigned to"><span>{view.assignee || "Unassigned"}{view.assigneeSecondary && <span className="block text-sm text-muted-foreground">{view.assigneeSecondary}</span>}</span></KV>
+              {view.stage && <KV label="Stage">{view.stage}</KV>}
+              <KV label="Reminder">{view.reminder ? "On" : "Off"}</KV>
               <KV label="Contact">
                 <span className="inline-flex flex-wrap items-center gap-3">
                   <a href={`tel:${view.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-1.5 text-indigo-700"><Phone size={15} />{view.phone}</a>

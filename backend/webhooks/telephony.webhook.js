@@ -44,7 +44,7 @@ router.post("/events", async (req, res, next) => {
           );
           const callerName = typeof event.callerName === "string" ? event.callerName.trim().slice(0, 100) : "";
           const lead = await Lead.create({ name: callerName || `Inbound caller ${normalizedFrom.slice(-4)}`, phone: from, source: source._id, assignedEmployee: assigned._id, createdBy: assigned._id, additionalNotes: `Created from inbound telephony call ${providerCallId}` });
-          match = { type: "Lead", id: lead._id };
+          match = { type: "Lead", id: lead._id, name: lead.name, phone: lead.phone, stage: lead.stage, assignedTo: assigned._id };
         }
       }
     }
@@ -65,10 +65,32 @@ router.post("/events", async (req, res, next) => {
       { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true },
     );
     if (direction === "inbound" && ["missed", "no-answer", "busy"].includes(status)) {
-      const callbackAssignee = match?.assignedTo || (await User.findOne({ status: "Active", role: { $in: ["Admin", "SalesExecutive"] } }).sort({ role: 1 }).select("_id").lean())?._id || null;
+      const fallbackUser = await User.findOne({ status: "Active", role: { $in: ["Admin", "SalesExecutive"] } })
+        .sort({ role: 1 })
+        .select("employeeId")
+        .populate("employeeId", "_id status")
+        .lean();
+      const fallbackEmployee = fallbackUser?.employeeId && typeof fallbackUser.employeeId === "object" && fallbackUser.employeeId.status === "Active"
+        ? fallbackUser.employeeId._id
+        : null;
+      const callbackAssignee = match?.assignedTo || fallbackEmployee;
       await FollowUp.findOneAndUpdate(
         { callLogId: call._id },
-        { $setOnInsert: { callLogId: call._id, phone: from, assignedTo: callbackAssignee, dueAt: new Date(Date.now() + 15 * 60_000), linkedTo: match?.type || "Unknown", linkedId: match?.id || null, notes: "Callback missed inbound call" } },
+        { $setOnInsert: {
+          callLogId: call._id,
+          source: "IVR",
+          title: "Missed call callback",
+          linkName: match?.name || (typeof event.callerName === "string" ? event.callerName.trim().slice(0, 100) : "") || from,
+          phone: from,
+          assignedTo: callbackAssignee,
+          dueAt: new Date(Date.now() + 15 * 60_000),
+          linkedTo: match?.type || "Unknown",
+          linkedId: match?.id || null,
+          leadId: match?.type === "Lead" ? match.id : null,
+          customerId: match?.type === "Customer" ? match.id : null,
+          stage: match?.stage || "",
+          notes: "Callback missed inbound call",
+        } },
         { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
       );
     }

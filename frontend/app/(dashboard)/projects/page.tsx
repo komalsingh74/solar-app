@@ -14,6 +14,7 @@ import api from "@/lib/api";
 import { getAllPages } from "@/lib/api-pagination";
 import TableSkeleton from "@/components/common/TableSkeleton";
 import DataPagination, { usePagination } from "@/components/common/data-pagination";
+import EmployeePicker, { type EmployeeOption } from "@/components/hr/employee-picker";
 
 const STAGES = ["Survey approved", "Material dispatched", "Structure", "Panels mounted", "Wiring & inverter", "Net-meter & inspection", "Commissioned"];
 const NET = ["Not applied", "Applied", "Approved", "Installed"];
@@ -24,12 +25,13 @@ const netTone: Record<string, Tone> = { "Not applied": "slate", Applied: "amber"
 
 type Option = { id: string; name: string };
 type SurveyOption = { id: string; customerId: string; name: string };
-type Project = { id: string; customerId: string; surveyId: string; engineerId: string; teamId: string; code: string; customer: string; location: string; kw: string; stage: string; engineer: string; crew: string; start: string; target: string; netMeter: string; subsidy: string; notes: string };
-const blank = (): Project => ({ id: "", customerId: "", surveyId: "", engineerId: "", teamId: "", code: "", customer: "", location: "", kw: "5", stage: STAGES[0], engineer: "", crew: "", start: d(0), target: d(14), netMeter: "Not applied", subsidy: "Not applicable", notes: "" });
+type Project = { id: string; customerId: string; surveyId: string; engineerId: string; engineerSecondary: string; teamId: string; code: string; customer: string; location: string; kw: string; stage: string; engineer: string; crew: string; start: string; target: string; netMeter: string; subsidy: string; notes: string };
+const blank = (): Project => ({ id: "", customerId: "", surveyId: "", engineerId: "", engineerSecondary: "", teamId: "", code: "", customer: "", location: "", kw: "5", stage: STAGES[0], engineer: "", crew: "", start: d(0), target: d(14), netMeter: "Not applied", subsidy: "Not applicable", notes: "" });
 const asDate = (value: unknown) => value ? new Date(String(value)).toISOString().slice(0, 10) : "";
 const fromApi = (record: Record<string, unknown>): Project => {
   const customer = record.customer && typeof record.customer === "object" ? record.customer as Record<string, unknown> : null;
   const engineer = record.engineer && typeof record.engineer === "object" ? record.engineer as Record<string, unknown> : null;
+  const legacyEngineer = record.engineerUserId && typeof record.engineerUserId === "object" ? record.engineerUserId as Record<string, unknown> : null;
   const team = record.installationTeam && typeof record.installationTeam === "object" ? record.installationTeam as Record<string, unknown> : null;
   const survey = record.siteSurvey && typeof record.siteSurvey === "object" ? record.siteSurvey as Record<string, unknown> : null;
   return {
@@ -37,8 +39,10 @@ const fromApi = (record: Record<string, unknown>): Project => {
     customerId: String(customer?._id ?? record.customer ?? ""), customer: String(customer?.customerName ?? ""),
     surveyId: String(survey?._id ?? record.siteSurvey ?? ""),
     location: String(record.siteAddress ?? ""), kw: String(record.systemSizeKw ?? "5"),
-    stage: String(record.stage ?? STAGES[0]), engineerId: String(engineer?._id ?? record.engineer ?? ""),
-    engineer: String(engineer?.name ?? ""), teamId: String(team?._id ?? record.installationTeam ?? ""),
+    stage: String(record.stage ?? STAGES[0]), engineerId: String(engineer?._id ?? legacyEngineer?._id ?? record.engineer ?? record.engineerUserId ?? ""),
+    engineer: String(engineer?.fullName ?? legacyEngineer?.name ?? ""),
+    engineerSecondary: engineer ? `${String(engineer.employeeCode ?? "")}${engineer.designation ? ` · ${String(engineer.designation)}` : ""}` : "",
+    teamId: String(team?._id ?? record.installationTeam ?? ""),
     crew: String(team?.teamName ?? ""), start: asDate(record.startDate), target: asDate(record.targetDate),
     netMeter: String(record.netMeteringStatus ?? "Not applied"), subsidy: String(record.subsidyStatus ?? "Not applicable"),
     notes: String(record.notes ?? ""),
@@ -53,7 +57,7 @@ export default function ProjectsPage() {
   const [list, setList] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
   const [surveys, setSurveys] = useState<SurveyOption[]>([]);
-  const [engineers, setEngineers] = useState<Option[]>([]);
+  const [engineers, setEngineers] = useState<EmployeeOption[]>([]);
   const [teams, setTeams] = useState<Option[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -74,7 +78,11 @@ export default function ProjectsPage() {
       const customer = item.customer && typeof item.customer === "object" ? item.customer as Record<string, unknown> : null;
       return { id: String(item._id), customerId: String(customer?._id ?? ""), name: String(item.surveyNumber ?? item._id) };
     }));
-    setEngineers((options?.engineers ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.name) })));
+    setEngineers((options?.engineers ?? []).map((item: Record<string, unknown>) => ({
+      id: String(item._id), name: String(item.fullName ?? item.name ?? ""),
+      code: String(item.employeeCode ?? ""), designation: String(item.designation ?? ""),
+      department: String(item.department ?? ""), role: String(item.systemRole ?? ""),
+    })));
     setTeams((options?.teams ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.teamName) })));
     setRequestError("");
   };
@@ -101,7 +109,9 @@ export default function ProjectsPage() {
     try {
       const payload = {
         customerId: draft.customerId, siteSurveyId: draft.surveyId || null, siteAddress: draft.location, systemSizeKw: Number(draft.kw),
-        stage: draft.stage, engineerId: draft.engineerId || null, installationTeamId: draft.teamId || null,
+        stage: draft.stage,
+        engineerId: !draft.engineerId ? null : engineers.some((engineer) => engineer.id === draft.engineerId) ? draft.engineerId : draft.id ? undefined : null,
+        installationTeamId: draft.teamId || null,
         startDate: draft.start, targetDate: draft.target, netMeteringStatus: draft.netMeter,
         subsidyStatus: draft.subsidy, notes: draft.notes,
       };
@@ -216,7 +226,10 @@ export default function ProjectsPage() {
             </div>
             <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold text-slate-800">Completed site survey (optional)</label><Select value={draft.surveyId || null} onValueChange={(id) => setDraft((current) => ({ ...current, surveyId: id ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select a completed survey" /></SelectTrigger><SelectContent>{surveys.filter((survey) => survey.customerId === draft.customerId).map((survey) => <SelectItem key={survey.id} value={survey.id}>{survey.name}</SelectItem>)}</SelectContent></Select></div>
             <TextField className="sm:col-span-2" label="Site address" value={draft.location} onChange={set("location")} placeholder="Area, city" />
-            <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Site engineer</label><Select value={draft.engineerId || null} onValueChange={(id) => setDraft((current) => ({ ...current, engineerId: id ?? "", engineer: engineers.find((entry) => entry.id === id)?.name ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select engineer" /></SelectTrigger><SelectContent>{engineers.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent></Select></div>
+            <EmployeePicker label="Site engineer" value={draft.engineerId} options={engineers} includeUnassigned fallbackName={draft.engineer} fallbackSecondary={draft.engineerSecondary} onChange={(engineerId) => {
+              const selected = engineers.find((entry) => entry.id === engineerId);
+              setDraft((current) => ({ ...current, engineerId, engineer: selected?.name ?? "", engineerSecondary: selected ? `${selected.code}${selected.designation ? ` · ${selected.designation}` : ""}` : "" }));
+            }} />
             <div className="grid gap-2"><label className="text-sm font-semibold text-slate-800">Installation team</label><Select value={draft.teamId || null} onValueChange={(id) => setDraft((current) => ({ ...current, teamId: id ?? "", crew: teams.find((entry) => entry.id === id)?.name ?? "" }))}><SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white"><SelectValue placeholder="Select team" /></SelectTrigger><SelectContent>{teams.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent></Select></div>
           </TabsContent>
           <TabsContent value="schedule" className="grid gap-4 sm:grid-cols-2">
@@ -242,7 +255,7 @@ export default function ProjectsPage() {
           <div className="grid gap-6 sm:grid-cols-[1fr_1.1fr]">
             <div className="space-y-3">
               <KV label="Status"><StatusBadge tone={statusTone[state(view)]}>{state(view)}</StatusBadge></KV>
-              <KV label="Site engineer">{view.engineer}{view.crew ? ` · ${view.crew}` : ""}</KV>
+              <KV label="Site engineer"><span>{view.engineer || "Unassigned"}{view.engineerSecondary && <span className="block text-sm text-muted-foreground">{view.engineerSecondary}</span>}{view.crew ? ` · ${view.crew}` : ""}</span></KV>
               <KV label="Start → target">{fmtDate(view.start)} → {fmtDate(view.target)} ({dayLabel(view.target)})</KV>
               <KV label="Net-meter"><StatusBadge tone={netTone[view.netMeter]}>{view.netMeter}</StatusBadge></KV>
               <KV label="Subsidy">{view.subsidy}</KV>

@@ -1,14 +1,16 @@
 import mongoose from "mongoose";
 import InstallationTeam from "../models/InstallationTeam.js";
+import Employee from "../models/hrms/Employee.js";
 import SolarProject from "../models/SolarProject.js";
-import User from "../models/userSchema.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 
 const validId = mongoose.isValidObjectId;
 const populateTeam = (query) => query
-  .populate("lead", "name phone role")
-  .populate("members", "name phone role")
+  .populate("lead", "fullName employeeCode designation department systemRole phone")
+  .populate("leadUserId", "name phone role")
+  .populate("members", "fullName employeeCode designation department systemRole phone")
+  .populate("memberUserIds", "name phone role")
   .populate("project", "projectCode systemSizeKw");
 
 const prepareTeam = async (body, userId, existing) => {
@@ -23,8 +25,8 @@ const prepareTeam = async (body, userId, existing) => {
   if (memberIds.length !== rawMembers.length) throw new AppError("Team members must be unique", 400, "DUPLICATE_MEMBER");
   const leadId = body.leadId ?? (existing ? String(existing.lead) : "");
   if (!validId(leadId) || !memberIds.includes(String(leadId))) throw new AppError("Choose a team lead from the selected members", 400, "INVALID_LEAD");
-  const users = await User.find({ _id: { $in: memberIds }, status: "Active" }).select("_id");
-  if (users.length !== memberIds.length) throw new AppError("All team members must be active users", 400, "INACTIVE_MEMBER");
+  const employees = await Employee.find({ _id: { $in: memberIds }, status: "Active" }).select("_id");
+  if (employees.length !== memberIds.length) throw new AppError("All team members must be active employees", 400, "INACTIVE_MEMBER");
 
   const status = body.status ?? existing?.status ?? "Available";
   if (!["Available", "On site", "On leave"].includes(status)) throw new AppError("Choose a valid team status", 400, "INVALID_STATUS");
@@ -43,7 +45,8 @@ const prepareTeam = async (body, userId, existing) => {
   }).select("teamName");
   if (occupied) throw new AppError(`A selected employee already belongs to ${occupied.teamName}`, 409, "MEMBER_ALREADY_ASSIGNED");
   return {
-    teamName: teamName.trim(), lead: leadId, members: memberIds, project: projectId || null,
+    teamName: teamName.trim(), lead: leadId, leadUserId: null, members: memberIds,
+    project: projectId || null,
     status, monthlyInstalledKw, incentiveRatePerKw,
     vehicle: body.vehicle ?? existing?.vehicle ?? "",
     skills: body.skills ?? existing?.skills ?? "",
@@ -54,7 +57,7 @@ const prepareTeam = async (body, userId, existing) => {
 
 export const installationTeamOptions = asyncHandler(async (_req, res) => {
   const [employees, projects] = await Promise.all([
-    User.find({ status: "Active" }).select("_id name phone role").sort({ name: 1 }).lean(),
+    Employee.find({ status: "Active" }).select("_id fullName employeeCode designation department systemRole phone").sort({ fullName: 1 }).lean(),
     SolarProject.find({ isActive: true }).select("_id projectCode systemSizeKw").sort({ projectCode: 1 }).lean(),
   ]);
   res.json({ success: true, data: { employees, projects } });

@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import CallLog from "../models/CallLog.js";
 import FollowUp from "../models/FollowUp.js";
+import Employee from "../models/hrms/Employee.js";
 import Lead from "../models/lead.js";
 import Customer from "../models/customerSchema.js";
 import TelephonyConnection from "../models/TelephonyConnection.js";
+import User from "../models/userSchema.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { normalizePhone } from "../services/telephony/provider.service.js";
@@ -17,7 +19,7 @@ export const dashboard = asyncHandler(async (req, res) => {
   const [totals, recent, pendingFollowUps, connection] = await Promise.all([
     CallLog.aggregate([{ $match: filter }, { $group: { _id: null, total: { $sum: 1 }, incoming: { $sum: { $cond: [{ $eq: ["$direction", "inbound"] }, 1, 0] } }, answered: { $sum: { $cond: [{ $in: ["$status", ["answered", "completed"]] }, 1, 0] } }, missed: { $sum: { $cond: [{ $in: ["$status", ["missed", "no-answer", "busy"]] }, 1, 0] } }, durationSeconds: { $sum: "$durationSeconds" } } }]),
     CallLog.find(filter).sort({ startedAt: -1 }).limit(8).lean(),
-    FollowUp.countDocuments({ status: "pending", dueAt: { $lt: end } }),
+    FollowUp.countDocuments({ callLogId: { $ne: null }, status: "pending", dueAt: { $lt: end } }),
     TelephonyConnection.findOne().select("provider").lean(),
   ]);
   const row = totals[0] || { total: 0, incoming: 0, answered: 0, missed: 0, durationSeconds: 0 };
@@ -66,15 +68,39 @@ export const createFollowUp = asyncHandler(async (req, res) => {
   const due = dueAt ? new Date(dueAt) : new Date(Date.now() + 15 * 60_000);
   if (Number.isNaN(due.getTime())) throw new AppError("Enter a valid callback due time", 400, "INVALID_DUE_DATE");
   const match = await findPhoneMatch(call.normalizedFrom);
-  const values = { phone: call.from, dueAt: due, assignedTo: match?.assignedTo || req.auth.userId, linkedTo: match?.type || "Unknown", linkedId: match?.id || null, notes: "Callback missed inbound call", createdBy: req.auth.userId };
+  const creator = await User.findById(req.auth.userId).select("employeeId").lean();
+  const creatorEmployee = creator?.employeeId && await Employee.exists({ _id: creator.employeeId, status: "Active" });
+  const values = {
+    source: "IVR",
+    title: "Missed call callback",
+    linkName: match?.name || call.from,
+    phone: call.from,
+    dueAt: due,
+    assignedTo: match?.assignedTo || creatorEmployee?._id || null,
+    linkedTo: match?.type || "Unknown",
+    linkedId: match?.id || null,
+    leadId: match?.type === "Lead" ? match.id : null,
+    customerId: match?.type === "Customer" ? match.id : null,
+    stage: match?.stage || "",
+    notes: "Callback missed inbound call",
+    createdBy: req.auth.userId,
+  };
   const existing = await FollowUp.exists({ callLogId: call._id });
   const item = await FollowUp.findOneAndUpdate({ callLogId: call._id }, { $setOnInsert: { callLogId: call._id, ...values } }, { upsert: true, returnDocument: "after", setDefaultsOnInsert: true });
   res.status(existing ? 200 : 201).json({ success: true, data: { item, alreadyExisted: Boolean(existing) } });
 });
 
 export const listFollowUps = asyncHandler(async (req, res) => {
-  const filter = {};
-  if (!["Admin", "SuperAdmin"].includes(req.auth.role)) filter.$or = [{ assignedTo: req.auth.userId }, { createdBy: req.auth.userId }];
+  const filter = { callLogId: { $ne: null } };
+  if (!["Admin", "SuperAdmin"].includes(req.auth.role)) {
+    const user = await User.findById(req.auth.userId).select("employeeId").lean();
+    filter.$or = [
+      ...(user?.employeeId ? [{ assignedTo: user.employeeId }] : []),
+      { assignedToUserId: req.auth.userId },
+      { assignedTo: req.auth.userId },
+      { createdBy: req.auth.userId },
+    ];
+  }
   if (["pending", "completed", "cancelled"].includes(req.query.status)) filter.status = req.query.status;
   const items = await FollowUp.find(filter).populate("callLogId", "providerCallId startedAt status ivrChoice").sort({ dueAt: 1 }).limit(100).lean();
   res.json({ success: true, data: { items } });
@@ -83,8 +109,16 @@ export const listFollowUps = asyncHandler(async (req, res) => {
 export const setFollowUpStatus = asyncHandler(async (req, res) => {
   const status = req.body?.status;
   if (!["pending", "completed", "cancelled"].includes(status)) throw new AppError("Status must be pending, completed or cancelled", 400, "INVALID_STATUS");
-  const filter = { _id: req.params.id };
-  if (!["Admin", "SuperAdmin"].includes(req.auth.role)) filter.$or = [{ assignedTo: req.auth.userId }, { createdBy: req.auth.userId }];
+  const filter = { _id: req.params.id, callLogId: { $ne: null } };
+  if (!["Admin", "SuperAdmin"].includes(req.auth.role)) {
+    const user = await User.findById(req.auth.userId).select("employeeId").lean();
+    filter.$or = [
+      ...(user?.employeeId ? [{ assignedTo: user.employeeId }] : []),
+      { assignedToUserId: req.auth.userId },
+      { assignedTo: req.auth.userId },
+      { createdBy: req.auth.userId },
+    ];
+  }
   const item = await FollowUp.findOneAndUpdate(filter, { $set: { status, completedAt: status === "completed" ? new Date() : null } }, { returnDocument: "after", runValidators: true });
   if (!item) throw new AppError("Callback task not found", 404, "FOLLOW_UP_NOT_FOUND");
   res.json({ success: true, data: { item } });
@@ -92,9 +126,14 @@ export const setFollowUpStatus = asyncHandler(async (req, res) => {
 
 export async function findPhoneMatch(normalizedPhone) {
   const tail = normalizedPhone.slice(-10).split("").join("\\D*");
-  const customer = await Customer.findOne({ phone: { $regex: `${tail}$` } }).select("_id").lean();
-  if (customer) return { type: "Customer", id: customer._id };
-  const lead = await Lead.findOne({ phone: { $regex: `${tail}$` }, isActive: true }).sort({ createdAt: -1 }).select("_id customerId assignedEmployee").lean();
-  if (lead) return lead.customerId ? { type: "Customer", id: lead.customerId, leadId: lead._id, assignedTo: lead.assignedEmployee } : { type: "Lead", id: lead._id, assignedTo: lead.assignedEmployee };
+  const customer = await Customer.findOne({ phone: { $regex: `${tail}$` } }).select("_id customerName phone").lean();
+  if (customer) return { type: "Customer", id: customer._id, name: customer.customerName, phone: customer.phone };
+  const lead = await Lead.findOne({ phone: { $regex: `${tail}$` }, isActive: true }).sort({ createdAt: -1 }).select("_id name phone stage customerId assignedEmployee").populate("customerId", "customerName phone").lean();
+  if (lead) {
+    if (lead.customerId && typeof lead.customerId === "object") {
+      return { type: "Customer", id: lead.customerId._id, name: lead.customerId.customerName || lead.name, phone: lead.customerId.phone || lead.phone, assignedTo: lead.assignedEmployee, stage: lead.stage };
+    }
+    return { type: "Lead", id: lead._id, name: lead.name, phone: lead.phone, assignedTo: lead.assignedEmployee, stage: lead.stage };
+  }
   return null;
 }

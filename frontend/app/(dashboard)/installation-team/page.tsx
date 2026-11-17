@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import api from "@/lib/api";
 import Loader from "@/components/common/Loader";
+import EmployeePicker from "@/components/hr/employee-picker";
 
 const STATUS = ["Available", "On site", "On leave"];
 const statusTone: Record<string, Tone> = { Available: "green", "On site": "indigo", "On leave": "amber" };
-type Person = { id: string; name: string; phone: string; role: string };
+type Person = { id: string; name: string; code: string; designation: string; phone: string; role: string };
 type Project = { id: string; name: string };
 type Team = { id: string; name: string; lead: string; members: string[]; vehicle: string; skills: string; status: string; projectId: string; project: string; kwMonth: number; rate: number };
 const blank = (): Team => ({ id: "", name: "", lead: "", members: [], vehicle: "", skills: "", status: "Available", projectId: "", project: "", kwMonth: 0, rate: 400 });
@@ -38,6 +39,7 @@ export default function InstallationTeamPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] = useState("");
+  const [employeeQuery, setEmployeeQuery] = useState("");
 
   const load = async () => {
     const [teamResponse, optionsResponse] = await Promise.all([api.get("/installation-teams"), api.get("/installation-teams/options")]);
@@ -45,7 +47,11 @@ export default function InstallationTeamPage() {
     if (!Array.isArray(items)) throw new Error("The server returned an invalid installation-team list.");
     setTeams(items.map((item: Record<string, unknown>) => fromApi(item)));
     const options = optionsResponse.data?.data;
-    setEmployees((options?.employees ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.name), phone: String(item.phone ?? ""), role: String(item.role ?? "Employee") })));
+    setEmployees((options?.employees ?? []).map((item: Record<string, unknown>) => ({
+      id: String(item._id), name: String(item.fullName ?? item.name ?? ""),
+      code: String(item.employeeCode ?? ""), designation: String(item.designation ?? ""),
+      phone: String(item.phone ?? ""), role: String(item.systemRole ?? item.role ?? "Employee"),
+    })));
     setProjects((options?.projects ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.projectCode) })));
     setRequestError("");
   };
@@ -102,7 +108,7 @@ export default function InstallationTeamPage() {
     }
   };
 
-  const openNew = () => { setDraft(blank()); setOpen(true); };
+  const openNew = () => { setEmployeeQuery(""); setDraft(blank()); setOpen(true); };
 
   return (
     <div className="!space-y-2">
@@ -130,7 +136,7 @@ export default function InstallationTeamPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{team.project || "No project assigned"}</p>
                 </div>
                 <div className="flex">
-                  <Button variant="ghost" size="icon" aria-label={`Edit ${team.name}`} onClick={() => { setDraft({ ...team }); setOpen(true); }}><Pencil /></Button>
+                  <Button variant="ghost" size="icon" aria-label={`Edit ${team.name}`} onClick={() => { setEmployeeQuery(""); setDraft({ ...team }); setOpen(true); }}><Pencil /></Button>
                   <Button variant="ghost" size="icon" aria-label={`Delete ${team.name}`} onClick={() => void remove(team)}><Trash2 /></Button>
                 </div>
               </div>
@@ -144,7 +150,7 @@ export default function InstallationTeamPage() {
                 {team.members.map((id) => {
                   const person = employee(id);
                   if (!person) return null;
-                  return <li key={id} className="flex items-center gap-3 py-2.5"><Avatar name={person.name} /><div><p className="font-semibold">{person.name}{id === team.lead && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">Lead</span>}</p><p className="text-sm text-muted-foreground">{person.role} · {person.phone}</p></div></li>;
+                  return <li key={id} className="flex items-center gap-3 py-2.5"><Avatar name={person.name} /><div><p className="font-semibold">{person.name}{id === team.lead && <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">Lead</span>}</p><p className="text-sm text-muted-foreground">{person.code}{person.designation ? ` · ${person.designation}` : ""} · {person.role} · {person.phone}</p></div></li>;
                 })}
               </ul>
             </Panel>
@@ -165,15 +171,16 @@ export default function InstallationTeamPage() {
           <TextField label="Incentive rate (₹ per kW)" type="number" min={0} value={String(draft.rate)} onChange={set("rate")} />
           <div className="sm:col-span-2">
             <p className="mb-2 text-sm font-semibold">Members</p>
-            <ul className="space-y-2">
-              {employees.map((person) => {
+            <input value={employeeQuery} onChange={(event) => setEmployeeQuery(event.target.value)} placeholder="Search name or employee code" aria-label="Search installation-team employees" className="mb-2 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+            <ul className="max-h-56 space-y-2 overflow-y-auto">
+              {employees.filter((person) => `${person.name} ${person.code} ${person.designation} ${person.role}`.toLowerCase().includes(employeeQuery.trim().toLowerCase())).map((person) => {
                 const other = otherTeam(person.id);
                 const checked = draft.members.includes(person.id);
-                return <li key={person.id}><label className={`flex items-center gap-2 text-sm ${other ? "text-slate-400" : "cursor-pointer"}`}><input type="checkbox" disabled={!!other} checked={checked} onChange={() => toggle(person.id)} className="h-4 w-4 accent-indigo-600" />{person.name} · {person.role}{other && ` (assigned to ${other.name})`}</label></li>;
+                return <li key={person.id}><label className={`flex items-center gap-2 text-sm ${other ? "text-slate-400" : "cursor-pointer"}`}><input type="checkbox" disabled={!!other} checked={checked} onChange={() => toggle(person.id)} className="h-4 w-4 accent-indigo-600" /><span><span className="font-medium">{person.name}</span><span className="ml-1 text-slate-500">{person.code} · {person.designation || person.role}{other && ` (assigned to ${other.name})`}</span></span></label></li>;
               })}
             </ul>
           </div>
-          <div className="grid gap-2 sm:col-span-2"><label className="text-sm font-semibold">Team lead</label><Select value={draft.lead} onValueChange={(lead) => set("lead")(lead ?? "")}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Select team lead" /></SelectTrigger><SelectContent>{draft.members.map((id) => { const person = employee(id); return person ? <SelectItem key={id} value={id}>{person.name}</SelectItem> : null; })}</SelectContent></Select></div>
+          <EmployeePicker className="sm:col-span-2" label="Team lead" value={draft.lead} options={employees.filter((person) => draft.members.includes(person.id))} fallbackName={employee(draft.lead)?.name ?? ""} onChange={(lead) => set("lead")(lead)} />
         </div>
       </SideSheet>
     </div>

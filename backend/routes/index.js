@@ -18,10 +18,12 @@ import expenseRoutes from "./expense.routes.js";
 import serviceTicketRoutes from "./serviceTicket.routes.js";
 import amcRoutes from "./amc.routes.js";
 import warrantyRoutes from "./warranty.routes.js";
+import employeeRoutes from "./employee.routes.js";
 
 const routes = express.Router();
 
 routes.use("/users", userRoutes);
+routes.use("/employees", employeeRoutes);
 routes.use("/upload", uploadRoutes);
 routes.use("/masters", masterRoutes);
 routes.use("/leads", leadRoutes);

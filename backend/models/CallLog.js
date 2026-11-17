@@ -16,7 +16,8 @@ const callLogSchema = new mongoose.Schema({
   ivrChoice: { type: String, trim: true, default: "" },
   leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead", default: null },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", default: null },
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", default: null },
+  assignedToUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   recordingUrl: { type: String, trim: true, default: "" },
   rawStatus: { type: String, trim: true, default: "" },
 }, { timestamps: true, versionKey: false });

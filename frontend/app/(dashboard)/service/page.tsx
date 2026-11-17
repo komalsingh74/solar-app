@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import EmployeePicker, { type EmployeeOption } from "@/components/hr/employee-picker";
 
 const CATS = ["Low generation", "Inverter error", "Net-meter issue", "Wiring / leakage", "Panel cleaning / AMC", "Billing query"];
 const PRIO = ["Critical", "High", "Medium", "Low"];
@@ -24,16 +25,17 @@ const statusTone: Record<string, Tone> = { Open: "red", Assigned: "amber", "In p
 const warrTone: Record<string, Tone> = { "In warranty": "green", AMC: "indigo", "Out of warranty": "amber" };
 
 type Log = { text: string; at: string };
-type Ticket = { id: string; code: string; customerId: string; customer: string; phone: string; projectId: string; project: string; category: string; priority: string; warranty: string; technicianId: string; tech: string; status: string; date: string; time: string; desc: string; resolution: string; log: Log[] };
+type Ticket = { id: string; code: string; customerId: string; customer: string; phone: string; projectId: string; project: string; category: string; priority: string; warranty: string; technicianId: string; tech: string; technicianSecondary: string; status: string; date: string; time: string; desc: string; resolution: string; log: Log[] };
 type Option = { id: string; name: string; phone?: string; customerId?: string };
 type ApiRecord = Record<string, unknown>;
 const asRecord = (value: unknown): ApiRecord => value && typeof value === "object" ? value as ApiRecord : {};
 const asRecords = (value: unknown): ApiRecord[] => Array.isArray(value) ? value.filter((item): item is ApiRecord => Boolean(item) && typeof item === "object") : [];
-const blank = (): Ticket => ({ id: "", code: "", customerId: "", customer: "", phone: "", projectId: "", project: "", category: CATS[0], priority: "Medium", warranty: "In warranty", technicianId: "", tech: "Unassigned", status: "Open", date: d(0), time: new Date().toTimeString().slice(0, 5), desc: "", resolution: "", log: [] });
+const blank = (): Ticket => ({ id: "", code: "", customerId: "", customer: "", phone: "", projectId: "", project: "", category: CATS[0], priority: "Medium", warranty: "In warranty", technicianId: "", tech: "Unassigned", technicianSecondary: "", status: "Open", date: d(0), time: new Date().toTimeString().slice(0, 5), desc: "", resolution: "", log: [] });
 const fromApi = (record: ApiRecord): Ticket => {
   const customer = asRecord(record.customer);
   const project = asRecord(record.project);
   const technician = asRecord(record.technician);
+  const legacyTechnician = asRecord(record.technicianUserId);
   const createdAt = new Date(String(record.createdAt ?? ""));
   const date = Number.isNaN(createdAt.getTime()) ? "" : `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}-${String(createdAt.getDate()).padStart(2, "0")}`;
   const time = Number.isNaN(createdAt.getTime()) ? "" : `${String(createdAt.getHours()).padStart(2, "0")}:${String(createdAt.getMinutes()).padStart(2, "0")}`;
@@ -43,8 +45,10 @@ const fromApi = (record: ApiRecord): Ticket => {
     phone: String(customer.phone ?? ""), projectId: String(project._id ?? record.project ?? ""),
     project: project._id ? `${String(project.projectCode)} · ${Number(project.systemSizeKw ?? 0)} kW` : "—",
     category: String(record.category ?? ""), priority: String(record.priority ?? "Medium"),
-    warranty: String(record.warrantyStatus ?? "In warranty"), technicianId: String(technician._id ?? ""),
-    tech: String(technician.name ?? "Unassigned"), status: String(record.status ?? "Open"),
+    warranty: String(record.warrantyStatus ?? "In warranty"), technicianId: String(technician._id ?? legacyTechnician._id ?? record.technician ?? record.technicianUserId ?? ""),
+    tech: String(technician.fullName ?? legacyTechnician.name ?? "Unassigned"),
+    technicianSecondary: technician._id ? `${String(technician.employeeCode ?? "")}${technician.designation ? ` · ${String(technician.designation)}` : ""}` : "",
+    status: String(record.status ?? "Open"),
     date, time,
     desc: String(record.description ?? ""), resolution: String(record.resolution ?? ""),
     log: asRecords(record.activity).map((entry) => ({
@@ -58,7 +62,7 @@ export default function ServicePage() {
   const [list, setList] = useState<Ticket[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
   const [projects, setProjects] = useState<Option[]>([]);
-  const [technicians, setTechnicians] = useState<Option[]>([]);
+  const [technicians, setTechnicians] = useState<EmployeeOption[]>([]);
   const [categories, setCategories] = useState<string[]>(CATS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -84,7 +88,11 @@ export default function ServicePage() {
       const customer = asRecord(item.customer);
       return { id: String(item._id), name: `${String(item.projectCode)} · ${Number(item.systemSizeKw ?? 0)} kW`, customerId: String(customer._id ?? "") };
     }));
-    setTechnicians(asRecords(data.technicians).map((item) => ({ id: String(item._id), name: String(item.name), phone: String(item.phone ?? "") })));
+    setTechnicians(asRecords(data.technicians).map((item) => ({
+      id: String(item._id), name: String(item.fullName ?? item.name ?? ""),
+      code: String(item.employeeCode ?? ""), designation: String(item.designation ?? ""),
+      department: String(item.department ?? ""), role: String(item.systemRole ?? ""),
+    })));
     setCategories(Array.isArray(data.categories) ? data.categories as string[] : CATS);
     setRequestError("");
   }, []);
@@ -112,10 +120,9 @@ export default function ServicePage() {
   );
   const pagination = usePagination(rows, { resetKey: `${q}|${filter}` });
 
-  const assign = async (id: string, tech: string) => {
+  const assign = async (id: string, technicianId: string) => {
     try {
-      const technicianId = technicians.find((item) => item.name === tech)?.id ?? "";
-      const response = await api.patch(`/service-tickets/${id}/status`, { technicianId });
+      const response = await api.patch(`/service-tickets/${id}/status`, { technicianId: technicianId || null });
       setList((current) => current.map((ticket) => ticket.id === id ? fromApi(response.data?.data?.item) : ticket));
     } catch (error) {
       const err = error as { userMessage?: string; message?: string };
@@ -169,7 +176,7 @@ export default function ServicePage() {
       const payload = {
         customerId: draft.customerId, projectId: draft.projectId || null, category: draft.category,
         priority: draft.priority, warrantyStatus: draft.warranty,
-        technicianId: technicians.find((technician) => technician.name === draft.tech)?.id || null,
+        technicianId: !draft.technicianId ? null : technicians.some((technician) => technician.id === draft.technicianId) ? draft.technicianId : draft.id ? undefined : null,
         description: draft.desc,
       };
       const response = draft.id
@@ -222,7 +229,7 @@ export default function ServicePage() {
                   <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={t.customer} /><div><p className="font-semibold">{t.customer}</p><p className="text-sm text-muted-foreground">{t.code} · {t.project}</p></div></div></TableCell>
                   <TableCell className="max-w-[260px] px-4"><Chip>{t.category}</Chip><p className="mt-1 truncate text-sm text-muted-foreground">{t.desc}</p></TableCell>
                   <TableCell className="px-4"><StatusBadge tone={prioTone[t.priority]}>{t.priority}</StatusBadge></TableCell>
-                  <TableCell className={`px-4 ${t.tech === "Unassigned" ? "text-muted-foreground" : ""}`}>{t.tech}</TableCell>
+                  <TableCell className={`px-4 ${t.tech === "Unassigned" ? "text-muted-foreground" : ""}`}><span>{t.tech}{t.technicianSecondary && <span className="block text-xs text-muted-foreground">{t.technicianSecondary}</span>}</span></TableCell>
                   <TableCell className={`px-4 text-sm font-medium ${s.tone === "red" ? "text-red-600" : s.tone === "amber" ? "text-amber-600" : s.tone === "green" ? "text-green-700" : "text-slate-600"}`}>{s.text}</TableCell>
                   <TableCell className="px-4"><StatusBadge tone={statusTone[t.status]}>{t.status}</StatusBadge></TableCell>
                   <TableCell className="px-4 text-right">
@@ -262,7 +269,10 @@ export default function ServicePage() {
           <SelectField label="Category" value={draft.category} onChange={set("category")} options={categories} />
           <SelectField label="Priority" value={draft.priority} onChange={set("priority")} options={PRIO} />
           <SelectField label="Warranty" value={draft.warranty} onChange={set("warranty")} options={WARRANTY} />
-          <SelectField label="Technician" value={draft.tech} onChange={set("tech")} options={["Unassigned", ...technicians.map((technician) => technician.name)]} />
+          <EmployeePicker label="Technician" value={draft.technicianId} options={technicians} includeUnassigned fallbackName={draft.tech === "Unassigned" ? "" : draft.tech} fallbackSecondary={draft.technicianSecondary} onChange={(technicianId) => {
+            const selected = technicians.find((technician) => technician.id === technicianId);
+            setDraft((current) => ({ ...current, technicianId, tech: selected?.name ?? "Unassigned", technicianSecondary: selected ? `${selected.code}${selected.designation ? ` · ${selected.designation}` : ""}` : "" }));
+          }} />
           <div className="sm:col-span-2"><AreaField label="Problem description" rows={4} value={draft.desc} onChange={set("desc")} placeholder="Error code, since when, what the customer observed…" /></div>
         </div>
       </SideSheet>
@@ -280,7 +290,7 @@ export default function ServicePage() {
               <KV label="Status"><StatusBadge tone={statusTone[view.status]}>{view.status}</StatusBadge></KV>
               <KV label="Priority · SLA"><span className="inline-flex items-center gap-2"><StatusBadge tone={prioTone[view.priority]}>{view.priority}</StatusBadge>{sla(view).text}</span></KV>
               <KV label="Warranty"><StatusBadge tone={warrTone[view.warranty]}>{view.warranty}</StatusBadge></KV>
-              <KV label="Technician">{view.tech}</KV>
+              <KV label="Technician"><span>{view.tech}{view.technicianSecondary && <span className="block text-sm text-muted-foreground">{view.technicianSecondary}</span>}</span></KV>
               <KV label="Customer"><a href={`tel:${view.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-2 text-indigo-700"><Phone size={15} />{view.phone}</a></KV>
               <KV label="Registered">{dayLabel(view.date)}, {view.time}</KV>
             </div>
@@ -288,7 +298,7 @@ export default function ServicePage() {
             <div><p className="mb-1.5 text-sm font-semibold">Problem</p><p className="text-muted-foreground">{view.desc}</p></div>
             {view.status !== "Resolved" ? (
               <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-                <SelectField label="Assign technician" value={view.tech} onChange={(v) => void assign(view.id, v)} options={["Unassigned", ...technicians.map((technician) => technician.name)]} />
+                <EmployeePicker label="Assign technician" value={view.technicianId} options={technicians} includeUnassigned fallbackName={view.tech === "Unassigned" ? "" : view.tech} fallbackSecondary={view.technicianSecondary} onChange={(technicianId) => void assign(view.id, technicianId)} />
                 <TextField label="Resolution note" value={note} onChange={setNote} placeholder="What was found and fixed" />
                 <Button size="lg" className={darkBtn} disabled={!note.trim()} onClick={() => void resolve(view.id)}><CheckCircle2 /> Mark resolved</Button>
               </div>

@@ -3,6 +3,7 @@
 import { Avatar, PageHeader, Panel, StatCard, StatusBadge, SelectField, TextField } from "@/components/ui/page-layout";
 import { SideSheet, d, darkBtn, fmtDate, inr, pillList, pillTrig, thCls } from "@/components/master/module-kit";
 import { advanceDue, monthKey, monthLabel, useHr } from "@/components/hr/hr-store";
+import EmployeePicker from "@/components/hr/employee-picker";
 
 import { useState } from "react";
 import { Banknote, MinusCircle, Plus, Wallet } from "lucide-react";
@@ -21,7 +22,7 @@ export default function AdvancesPage() {
   const [ded, setDed] = useState({ emp: "", month: monthKey(0), type: DED_TYPES[0], amount: "", note: "" });
   const active = s.employees.filter((e) => e.status === "Active");
   const name = (id: number) => s.employees.find((e) => e.id === id)?.name ?? "—";
-  const person = (n: string) => s.employees.find((e) => e.name === n);
+  const person = (id: string) => s.employees.find((e) => String(e.id) === id);
 
   const open_ = s.advances.filter((a) => a.amount - a.recovered > 0);
   const advancePagination = usePagination(s.advances);
@@ -99,7 +100,7 @@ export default function AdvancesPage() {
       <SideSheet open={open} onOpenChange={setOpen} title={tab === "adv" ? "Give advance" : "Add deduction"} description={tab === "adv" ? "EMI is recovered from salary each month until the balance is zero." : "Deducted once, in the month you choose."} error={error} saveLabel="Save" onSave={save}>
         {tab === "adv" ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField className="sm:col-span-2" label="Employee" value={adv.emp} onChange={(v) => setAdv((x) => ({ ...x, emp: v }))} options={active.map((e) => e.name)} placeholder="Select employee" />
+            <EmployeePicker className="sm:col-span-2" label="Employee" value={adv.emp} onChange={(emp) => setAdv((current) => ({ ...current, emp }))} options={active.map((employee) => ({ id: String(employee.id), name: employee.name, code: employee.code, designation: employee.designation }))} placeholder="Select employee" />
             <TextField label="Advance amount (₹)" type="number" min={0} value={adv.amount} onChange={(v) => setAdv((x) => ({ ...x, amount: v }))} />
             <TextField label="Monthly recovery / EMI (₹)" type="number" min={0} value={adv.emi} onChange={(v) => setAdv((x) => ({ ...x, emi: v }))} />
             <TextField label="Date given" type="date" value={adv.date} onChange={(v) => setAdv((x) => ({ ...x, date: v }))} />
@@ -108,7 +109,7 @@ export default function AdvancesPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField className="sm:col-span-2" label="Employee" value={ded.emp} onChange={(v) => setDed((x) => ({ ...x, emp: v }))} options={active.map((e) => e.name)} placeholder="Select employee" />
+            <EmployeePicker className="sm:col-span-2" label="Employee" value={ded.emp} onChange={(emp) => setDed((current) => ({ ...current, emp }))} options={active.map((employee) => ({ id: String(employee.id), name: employee.name, code: employee.code, designation: employee.designation }))} placeholder="Select employee" />
             <SelectField label="Type" value={ded.type} onChange={(v) => setDed((x) => ({ ...x, type: v }))} options={DED_TYPES} />
             <SelectField label="Deduct in" value={ded.month} onChange={(v) => setDed((x) => ({ ...x, month: v }))} options={[monthKey(0), monthKey(-1)]} />
             <TextField label="Amount (₹)" type="number" min={0} value={ded.amount} onChange={(v) => setDed((x) => ({ ...x, amount: v }))} />

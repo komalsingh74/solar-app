@@ -3,6 +3,7 @@
 import { Avatar, Chip, PageHeader, Panel, StatCard, StatusBadge, Tone, SelectField, TextField } from "@/components/ui/page-layout";
 import { SideSheet, d, darkBtn, fmtDate, pillList, pillTrig, thCls } from "@/components/master/module-kit";
 import { LEAVE_QUOTA, attOf, isSunday, monthAtt, monthKey, monthLabel, rangeDates, useHr } from "@/components/hr/hr-store";
+import EmployeePicker from "@/components/hr/employee-picker";
 
 import { useState } from "react";
 import { CalendarOff, Check, ClipboardCheck, Plus, UserCheck, X } from "lucide-react";
@@ -39,7 +40,7 @@ export default function AttendancePage() {
 
   const used = (empId: number, type: string) => s.leaves.filter((l) => l.empId === empId && l.type === type && l.status === "Approved").reduce((a, l) => a + l.days, 0);
   const left = (empId: number, type: string) => LEAVE_QUOTA[type] - used(empId, type);
-  const emp = s.employees.find((e) => e.name === draft.emp);
+  const emp = s.employees.find((e) => String(e.id) === draft.emp);
   const days = rangeDates(draft.from, draft.to).filter((x) => !isSunday(x)).length;
   const error = !emp ? "Select an employee." : draft.to < draft.from ? "End date is before start date." : days === 0 ? "Selected dates are all weekly offs." : draft.type !== "Unpaid" && days > left(emp.id, draft.type) ? `Only ${left(emp.id, draft.type)} ${draft.type} leave days left. Choose Unpaid or fewer days.` : !draft.reason.trim() ? "Add a reason." : "";
   const apply = () => {
@@ -116,7 +117,7 @@ export default function AttendancePage() {
               <TableBody>
                 {todayPagination.pageItems.map((e) => { const a = attOf(s, e, today); return (
                   <TableRow key={e.id}>
-                    <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><div><p className="font-semibold">{e.name}</p><p className="text-sm text-muted-foreground">{e.dept}</p></div></div></TableCell>
+                    <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><div><p className="font-semibold">{e.name}</p><p className="text-sm text-muted-foreground">{e.code} · {e.designation || e.dept}</p></div></div></TableCell>
                     <TableCell className="px-4">{e.shift}</TableCell>
                     <TableCell className="px-4"><StatusBadge tone={attTone[a]}>{attName[a]}</StatusBadge></TableCell>
                     <TableCell className="px-4"><div className="flex gap-1.5">{MARKS.map(([k, l]) => <Button key={k} size="sm" variant={a === k ? "default" : "outline"} className={`rounded-lg ${a === k ? "bg-slate-950 text-white hover:bg-slate-800" : "border-slate-200"}`} onClick={() => mark(e.id, k)}>{l}</Button>)}</div></TableCell>
@@ -135,7 +136,7 @@ export default function AttendancePage() {
             <TableBody>
               {monthPagination.pageItems.map((e) => { const m = monthAtt(s, e, month); const worked = m.P + m.H + m.L + m.A + m.U + m.H; const pct = worked ? Math.round(((m.P + m.H * 0.5 + m.L) / (m.P + m.H + m.L + m.A + m.U || 1)) * 100) : 0; return (
                 <TableRow key={e.id}>
-                  <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><span className="font-semibold">{e.name}</span></div></TableCell>
+                  <TableCell className="px-4 py-3"><div className="flex items-center gap-3"><Avatar name={e.name} /><div><p className="font-semibold">{e.name}</p><p className="text-sm text-muted-foreground">{e.code} · {e.designation || e.dept}</p></div></div></TableCell>
                   <TableCell className="px-4">{m.P}</TableCell><TableCell className="px-4">{m.H}</TableCell><TableCell className="px-4">{m.A}</TableCell><TableCell className="px-4">{m.L}</TableCell><TableCell className="px-4">{m.U}</TableCell>
                   <TableCell className={`px-4 font-semibold ${m.lop ? "text-red-600" : ""}`}>{m.lop}</TableCell>
                   <TableCell className="px-4"><div className="flex items-center gap-2"><div className="h-2 w-20 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${pct < 85 ? "bg-amber-500" : "bg-green-600"}`} style={{ width: `${pct}%` }} /></div><span className="text-sm">{pct}%</span></div></TableCell>
@@ -179,7 +180,7 @@ export default function AttendancePage() {
 
       <SideSheet open={formOpen} onOpenChange={setFormOpen} title="Apply leave" description="Approved paid leave is marked automatically in attendance. Unpaid leave becomes loss of pay." error={error} saveLabel="Submit request" onSave={apply}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <SelectField className="sm:col-span-2" label="Employee" value={draft.emp} onChange={(v) => setDraft((x) => ({ ...x, emp: v }))} options={active.map((e) => e.name)} placeholder="Select employee" />
+          <EmployeePicker className="sm:col-span-2" label="Employee" value={draft.emp} onChange={(emp) => setDraft((current) => ({ ...current, emp }))} options={active.map((employee) => ({ id: String(employee.id), name: employee.name, code: employee.code, designation: employee.designation }))} placeholder="Select employee" />
           <SelectField label="Leave type" value={draft.type} onChange={(v) => setDraft((x) => ({ ...x, type: v }))} options={TYPES} />
           <div className="flex items-end pb-3 text-sm text-muted-foreground">{emp && draft.type !== "Unpaid" ? `${left(emp.id, draft.type)} days left` : ""}</div>
           <TextField label="From" type="date" value={draft.from} onChange={(v) => setDraft((x) => ({ ...x, from: v, to: v > x.to ? v : x.to }))} />

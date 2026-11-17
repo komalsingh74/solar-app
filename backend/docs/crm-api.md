@@ -15,6 +15,10 @@ Leads and quotations support `GET`, `POST`, `PATCH`, and `DELETE`. Lead deletion
 is a soft delete so linked CRM records remain intact. Quotations are soft
 deleted and detached from their linked lead. Follow-up tasks support the same
 CRUD operations; task states are `pending`, `completed`, and `cancelled`.
+Lead form follow-ups are stored as separate `FollowUp` records linked by
+`leadId`; editing a lead updates its pending follow-up, while completed
+follow-ups remain in history. `/api/follow-ups` reads these records and
+continues to include legacy manual task records during the transition.
 `GET /api/leads/options` returns active lead sources and users for assignment;
 `GET /api/follow-ups/options` returns active users.
 

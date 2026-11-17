@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import Customer from "../models/customerSchema.js";
+import Employee from "../models/hrms/Employee.js";
 import ServiceTicket from "../models/ServiceTicket.js";
 import SolarProject from "../models/SolarProject.js";
-import User from "../models/userSchema.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import nextSequence from "../services/nextSequence.js";
@@ -14,7 +14,8 @@ const categories = ["Low generation", "Inverter error", "Net-meter issue", "Wiri
 const populateTicket = (query) => query
   .populate("customer", "customerId customerName phone")
   .populate("project", "projectCode systemSizeKw")
-  .populate("technician", "name phone")
+  .populate("technician", "fullName employeeCode designation department systemRole phone")
+  .populate("technicianUserId", "name phone")
   .populate("activity.by", "name");
 
 const prepareTicket = async (body = {}, existing) => {
@@ -29,12 +30,15 @@ const prepareTicket = async (body = {}, existing) => {
   const warrantyStatus = body.warrantyStatus ?? existing?.warrantyStatus ?? "In warranty";
   if (!["In warranty", "AMC", "Out of warranty"].includes(warrantyStatus)) throw new AppError("Choose a valid coverage status", 400, "INVALID_WARRANTY_STATUS");
   const technicianId = Object.hasOwn(body, "technicianId") ? body.technicianId || "" : existing?.technician ? String(existing.technician) : "";
-  if (technicianId && (!validId(technicianId) || !await User.exists({ _id: technicianId, status: "Active", role: { $in: ["ServiceEngineer", "InstallationTeam"] } }))) throw new AppError("Select an active service technician", 400, "INVALID_TECHNICIAN");
+  const unchangedTechnician = existing && technicianId === String(existing.technician || "");
+  if (technicianId && (!validId(technicianId) || (!unchangedTechnician && !await Employee.exists({ _id: technicianId, status: "Active", department: { $in: ["Service", "Installation"] } })))) throw new AppError("Select an active service technician", 400, "INVALID_TECHNICIAN");
   const description = body.description ?? existing?.description;
   if (typeof description !== "string" || !description.trim()) throw new AppError("Describe the complaint", 400, "REQUIRED_FIELDS");
   return {
     customer: customerId, project: projectId || null, category: category.trim(),
-    priority, warrantyStatus, technician: technicianId || null, description: description.trim(),
+    priority, warrantyStatus, technician: technicianId || null,
+    technicianUserId: Object.hasOwn(body, "technicianId") ? null : existing?.technicianUserId ?? null,
+    description: description.trim(),
   };
 };
 
@@ -42,7 +46,8 @@ export const serviceTicketOptions = asyncHandler(async (_req, res) => {
   const [customers, projects, technicians] = await Promise.all([
     Customer.find({ status: "Active" }).select("_id customerName phone").sort({ customerName: 1 }).lean(),
     SolarProject.find({ isActive: true }).populate("customer", "_id customerName").select("_id projectCode customer systemSizeKw").sort({ createdAt: -1 }).lean(),
-    User.find({ status: "Active", role: { $in: ["ServiceEngineer", "InstallationTeam"] } }).select("_id name phone").sort({ name: 1 }).lean(),
+    Employee.find({ status: "Active", department: { $in: ["Service", "Installation"] } })
+      .select("_id fullName employeeCode designation department systemRole phone").sort({ fullName: 1 }).lean(),
   ]);
   res.json({ success: true, data: { customers, projects, technicians, categories } });
 });
@@ -98,8 +103,9 @@ export const updateServiceTicketStatus = asyncHandler(async (req, res) => {
   if (!item) throw new AppError("Complaint not found", 404, "TICKET_NOT_FOUND");
   const { status, technicianId, resolution } = req.body ?? {};
   if (technicianId !== undefined) {
-    if (technicianId && (!validId(technicianId) || !await User.exists({ _id: technicianId, status: "Active", role: { $in: ["ServiceEngineer", "InstallationTeam"] } }))) throw new AppError("Select an active service technician", 400, "INVALID_TECHNICIAN");
+    if (technicianId && (!validId(technicianId) || !await Employee.exists({ _id: technicianId, status: "Active", department: { $in: ["Service", "Installation"] } }))) throw new AppError("Select an active service technician", 400, "INVALID_TECHNICIAN");
     item.technician = technicianId || null;
+    item.technicianUserId = null;
     if (item.status === "Open" || item.status === "Assigned") item.status = technicianId ? "Assigned" : "Open";
     item.activity.unshift({ action: technicianId ? "Technician assigned" : "Technician unassigned", by: req.auth.userId });
   }

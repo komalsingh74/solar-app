@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import User from "../models/userSchema.js";
+import Employee from "../models/hrms/Employee.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { signAuthToken } from "../utils/authToken.js";
@@ -10,6 +11,7 @@ const publicUser = (user) => ({
   email: user.email,
   phone: user.phone,
   role: user.role,
+  employeeId: user.employeeId,
   permissions: user.permissions,
 });
 
@@ -59,12 +61,14 @@ export const register = asyncHandler(async (req, res) => {
     );
   }
 
+  const matchingEmployees = await Employee.find({ email: normalizedEmail, status: "Active" }).select("_id").limit(2).lean();
   const user = await User.create({
     name: name.trim(),
     email: normalizedEmail,
     password,
     phone: phone.trim(),
     role: "Employee",
+    employeeId: matchingEmployees.length === 1 ? matchingEmployees[0]._id : null,
   });
 
   res.status(201).json({

@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import Customer from "../models/customerSchema.js";
+import Employee from "../models/hrms/Employee.js";
 import SolarProject from "../models/SolarProject.js";
 import SubsidyApplication, { applicationStages } from "../models/SubsidyApplication.js";
-import User from "../models/userSchema.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import nextSequence from "../services/nextSequence.js";
@@ -12,7 +12,8 @@ const paging = (query) => ({ page: Math.max(1, Number.parseInt(query.page, 10) |
 const populateApplication = (query) => query
   .populate("customer", "customerId customerName phone")
   .populate("project", "projectCode systemSizeKw")
-  .populate("owner", "name");
+  .populate("owner", "fullName employeeCode designation department systemRole")
+  .populate("ownerUserId", "name");
 
 const prepareApplication = async (body, userId, existing) => {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new AppError("A JSON object is required", 400, "INVALID_BODY");
@@ -21,7 +22,7 @@ const prepareApplication = async (body, userId, existing) => {
   const projectId = Object.hasOwn(body, "projectId") ? body.projectId || "" : existing?.project ? String(existing.project) : "";
   if (projectId && (!validId(projectId) || !await SolarProject.exists({ _id: projectId, customer: customerId, isActive: true }))) throw new AppError("Select a project belonging to this customer", 400, "INVALID_PROJECT");
   const ownerId = Object.hasOwn(body, "ownerId") ? body.ownerId || "" : existing?.owner ? String(existing.owner) : "";
-  if (ownerId && (!validId(ownerId) || !await User.exists({ _id: ownerId, status: "Active" }))) throw new AppError("Select an active application owner", 400, "INVALID_OWNER");
+  if (ownerId && (!validId(ownerId) || !await Employee.exists({ _id: ownerId, status: "Active" }))) throw new AppError("Select an active application owner", 400, "INVALID_OWNER");
   const systemSizeKw = Number(body.systemSizeKw ?? existing?.systemSizeKw);
   if (!Number.isFinite(systemSizeKw) || systemSizeKw < 0.1) throw new AppError("System size must be at least 0.1 kW", 400, "INVALID_CAPACITY");
   const scheme = body.scheme ?? existing?.scheme ?? "PM Surya Ghar";
@@ -33,7 +34,7 @@ const prepareApplication = async (body, userId, existing) => {
   const expectedSubsidy = Number(body.expectedSubsidy ?? existing?.expectedSubsidy ?? 0);
   if (!Number.isFinite(expectedSubsidy) || expectedSubsidy < 0) throw new AppError("Enter a valid expected subsidy amount", 400, "INVALID_SUBSIDY_AMOUNT");
   const values = {
-    customer: customerId, project: projectId || null, owner: ownerId || null,
+    customer: customerId, project: projectId || null, owner: ownerId || null, ownerUserId: null,
     systemSizeKw, scheme, discom: discom.trim(),
     portalApplicationNumber: body.portalApplicationNumber ?? existing?.portalApplicationNumber ?? "",
     expectedSubsidy, currentStage: stage,
@@ -52,7 +53,7 @@ export const subsidyOptions = asyncHandler(async (_req, res) => {
   const [customers, projects, owners] = await Promise.all([
     Customer.find({ status: "Active" }).select("_id customerName phone").sort({ customerName: 1 }).lean(),
     SolarProject.find({ isActive: true }).populate("customer", "customerName").select("_id projectCode customer systemSizeKw").sort({ createdAt: -1 }).lean(),
-    User.find({ status: "Active" }).select("_id name").sort({ name: 1 }).lean(),
+    Employee.find({ status: "Active" }).select("_id fullName employeeCode designation department systemRole").sort({ fullName: 1 }).lean(),
   ]);
   res.json({ success: true, data: { customers, projects, owners, stages: applicationStages } });
 });

@@ -69,6 +69,11 @@ const leadSchema = new Schema(
 
     assignedEmployee: {
       type: Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
+    assignedEmployeeUserId: {
+      type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
@@ -148,14 +153,6 @@ const leadSchema = new Schema(
       type: Number,
       min: 0,
       default: null,
-    },
-
-    nextFollowUp: {
-      date: { type: Date, default: null },
-      type: { type: String, enum: ["Call", "WhatsApp", "Visit", "Email"], default: "Call" },
-      priority: { type: String, enum: ["Low", "Medium", "High"], default: "Medium" },
-      reminder: { type: Boolean, default: false },
-      notes: { type: String, trim: true, default: "" },
     },
 
     // ==================================

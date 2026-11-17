@@ -2,7 +2,7 @@
 
 import { AreaField, KV, SelectField, TextField, tabCls, tabsListCls } from "@/components/ui/page-layout";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight, Building2, CalendarCheck, CalendarClock, CalendarDays, CheckCircle2,
   FileText, Home, MapPin, MessageCircle, MoreVertical, Pencil, Phone, Plus, Sun, User, Users, Eye, Trash2,
@@ -16,6 +16,7 @@ import api from "@/lib/api";
 import TableSkeleton from "@/components/common/TableSkeleton";
 import DataPagination from "@/components/common/data-pagination";
 import Loader from "@/components/common/Loader";
+import EmployeePicker, { type EmployeeOption } from "@/components/hr/employee-picker";
 
 /* ───────────────────────── data ───────────────────────── */
 
@@ -65,10 +66,11 @@ const pipeCls: Record<string, { badge: string; bar: string }> = {
   Lost: { badge: "bg-red-50 text-red-600", bar: "bg-red-500" },
 };
 
-type Option = { id: string; name: string };
+type Option = EmployeeOption & { name: string };
 const apiToLead = (record: Record<string, unknown>): Lead => {
   const source = record.source && typeof record.source === "object" ? record.source as Record<string, unknown> : null;
   const employee = record.assignedEmployee && typeof record.assignedEmployee === "object" ? record.assignedEmployee as Record<string, unknown> : null;
+  const legacyEmployee = record.assignedEmployeeUserId && typeof record.assignedEmployeeUserId === "object" ? record.assignedEmployeeUserId as Record<string, unknown> : null;
   const next = record.nextFollowUp && typeof record.nextFollowUp === "object" ? record.nextFollowUp as Record<string, unknown> : {};
   return {
     ...blank,
@@ -80,8 +82,8 @@ const apiToLead = (record: Record<string, unknown>): Lead => {
     stage: record.stage === "Won" ? "Converted" : String(record.stage ?? "Lead"),
     source: String(source?.sourceName ?? ""),
     sourceId: String(source?._id ?? record.source ?? ""),
-    employee: String(employee?.name ?? ""),
-    employeeId: String(employee?._id ?? record.assignedEmployee ?? ""),
+    employee: String(employee?.fullName ?? legacyEmployee?.name ?? ""),
+    employeeId: String(employee?._id ?? legacyEmployee?._id ?? record.assignedEmployee ?? ""),
     followUp: next.date ? localDateTime(next.date) : "",
     followUpType: String(next.type ?? "Call"),
     priority: String(next.priority ?? "Medium"),
@@ -99,20 +101,22 @@ const apiToLead = (record: Record<string, unknown>): Lead => {
   };
 };
 
-const leadToApi = (lead: Lead) => ({
+const leadToApi = (lead: Lead, includeAssignment = true) => ({
   name: lead.name,
   phone: lead.phone,
   customerType: lead.type,
   location: lead.location,
   stage: lead.stage === "Converted" ? "Won" : lead.stage,
   sourceId: lead.sourceId || null,
-  assignedEmployeeId: lead.employeeId || null,
+  ...(includeAssignment ? { assignedEmployeeId: lead.employeeId || null } : {}),
   nextFollowUp: {
     date: lead.followUp || null,
     type: lead.followUpType,
     priority: lead.priority,
     reminder: lead.reminder,
     notes: lead.followUpNotes,
+    ...(includeAssignment ? { assignedTo: lead.employeeId || null } : {}),
+    stage: lead.stage === "Converted" ? "Won" : lead.stage,
   },
   systemSizeKw: lead.kw ? Number(lead.kw) : null,
   quotationAmount: lead.amount ? Number(lead.amount) : null,
@@ -225,6 +229,7 @@ export default function LeadsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [view, setView] = useState<Lead | null>(null);
   const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
 
   const [pipeTab, setPipeTab] = useState("all");
   const [pipeAll, setPipeAll] = useState(false);
@@ -246,8 +251,12 @@ export default function LeadsPage() {
       return items;
     })];
     setLeads(allRecords.map((record: Record<string, unknown>) => apiToLead(record)));
-    setSources((options.data?.data?.sources ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.sourceName) })));
-    setStaff((options.data?.data?.employees ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.name) })));
+    setSources((options.data?.data?.sources ?? []).map((item: Record<string, unknown>) => ({ id: String(item._id), name: String(item.sourceName), code: "", designation: "" })));
+    setStaff((options.data?.data?.employees ?? []).map((item: Record<string, unknown>) => ({
+      id: String(item._id), name: String(item.fullName ?? item.name ?? ""),
+      code: String(item.employeeCode ?? ""), designation: String(item.designation ?? ""),
+      department: String(item.department ?? ""), role: String(item.systemRole ?? ""),
+    })));
     setRequestError("");
   };
 
@@ -264,7 +273,7 @@ export default function LeadsPage() {
   const filter = (fn: (v: string) => void) => (v: string) => { fn(v); setPage(1); };
   const rows = useMemo(
     () => leads.filter((l) =>
-      (stage === "all" || l.stage === stage) && (source === "all" || l.source === source) && (emp === "all" || l.employee === emp) &&
+      (stage === "all" || l.stage === stage) && (source === "all" || l.source === source) && (emp === "all" || l.employeeId === emp) &&
       (!l.followUp || ((!from || l.followUp.slice(0, 10) >= from) && (!to || l.followUp.slice(0, 10) <= to)))),
     [leads, stage, source, emp, from, to],
   );
@@ -280,7 +289,9 @@ export default function LeadsPage() {
     setRequestError("");
     try {
       const saved = await Promise.all(leads.filter((lead) => picked.has(lead.id)).map(async (lead) => {
-        const response = await api.patch(`/leads/${lead.id}`, leadToApi({ ...lead, ...patch }));
+        const updated = { ...lead, ...patch };
+        const includeAssignment = !updated.employeeId || staff.some((employee) => employee.id === updated.employeeId);
+        const response = await api.patch(`/leads/${lead.id}`, leadToApi(updated, includeAssignment));
         return apiToLead(response.data?.data?.item);
       }));
       setLeads((current) => current.map((lead) => saved.find((item) => item.id === lead.id) ?? lead));
@@ -295,12 +306,14 @@ export default function LeadsPage() {
   const set = (k: keyof Lead) => (v: string) => setDraft((s) => ({ ...s, [k]: v }));
   const invalid = !draft.name.trim() || !draft.phone.trim() || (draft.stage === "Lost" && !draft.lostReason);
   const save = async () => {
-    if (invalid) return;
+    if (invalid || saveLock.current) return;
+    saveLock.current = true;
     setSaving(true);
     setRequestError("");
     try {
+      const includeAssignment = !draft.employeeId || staff.some((employee) => employee.id === draft.employeeId);
       const response = draft.id
-        ? await api.patch(`/leads/${draft.id}`, leadToApi(draft))
+        ? await api.patch(`/leads/${draft.id}`, leadToApi(draft, includeAssignment))
         : await api.post("/leads", leadToApi(draft));
       const saved = apiToLead(response.data?.data?.item);
       setLeads((current) => draft.id
@@ -312,6 +325,7 @@ export default function LeadsPage() {
       const err = error as { userMessage?: string; message?: string };
       setRequestError(err.userMessage || err.message || "Could not save lead.");
     } finally {
+      saveLock.current = false;
       setSaving(false);
     }
   };
@@ -380,7 +394,7 @@ export default function LeadsPage() {
           </Select>
           <Select value={emp || null} onValueChange={(value) => filter(setEmp)(value ?? "")}>
             <SelectTrigger className={`${triggerCls} w-[150px]`} aria-label="Filter by employee"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="all">All Employees</SelectItem>{staff.map((item) => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}</SelectContent>
+            <SelectContent><SelectItem value="all">All Employees</SelectItem>{staff.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.code ? ` · ${item.code}` : ""}{item.designation ? ` · ${item.designation}` : ""}</SelectItem>)}</SelectContent>
           </Select>
           <div className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700">
             <CalendarDays size={15} className="text-slate-400" />
@@ -410,12 +424,10 @@ export default function LeadsPage() {
             {picked.size > 0 ? (
               <div className="flex flex-wrap items-center gap-2 text-[13px]">
                 <span className="font-semibold text-indigo-600">{picked.size} selected</span>
-                <select aria-label="Assign selected leads" className={nativeSel} value="" onChange={(e) => {
-                  const assignee = staff.find((person) => person.id === e.target.value);
+                <EmployeePicker label="Assign selected leads" placeholder="Assign to…" value="" options={staff} className="min-w-[220px]" onChange={(employeeId) => {
+                  const assignee = staff.find((person) => person.id === employeeId);
                   if (assignee) void bulk({ employeeId: assignee.id, employee: assignee.name });
-                }}>
-                  <option value="">Assign to…</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                }} />
                 <select aria-label="Change stage of selected leads" className={nativeSel} value="" onChange={(e) => e.target.value && void bulk({ stage: e.target.value })}>
                   <option value="">Change stage…</option>{STAGES.filter((s) => s !== "Lost").map((s) => <option key={s}>{s}</option>)}
                 </select>
@@ -591,14 +603,10 @@ export default function LeadsPage() {
                 <TextField className="sm:col-span-2" label="Quotation amount (₹)" type="number" value={draft.amount} onChange={set("amount")} placeholder="250000" />
               </TabsContent>
               <TabsContent value="follow" className="grid gap-3 sm:grid-cols-2 [&_input]:h-10 [&_label]:text-xs [&_button[data-slot=select-trigger]]:h-10">
-                <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">Assigned employee
-                  <select value={draft.employeeId} onChange={(event) => {
-                    const selected = staff.find((item) => item.id === event.target.value);
-                    setDraft((current) => ({ ...current, employeeId: selected?.id ?? "", employee: selected?.name ?? "" }));
-                  }} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm">
-                    <option value="">Unassigned</option>{staff.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
-                </label>
+                <EmployeePicker label="Assigned employee" value={draft.employeeId} options={staff} includeUnassigned fallbackName={draft.employee} onChange={(employeeId) => {
+                  const selected = staff.find((item) => item.id === employeeId);
+                  setDraft((current) => ({ ...current, employeeId, employee: selected?.name ?? "" }));
+                }} />
                 <SelectField label="Stage" value={draft.stage} onChange={set("stage")} options={STAGES} />
                 <TextField label="Next follow-up date and time" type="datetime-local" value={draft.followUp.length === 10 ? `${draft.followUp}T09:00` : draft.followUp} onChange={set("followUp")} />
                 <SelectField label="Follow-up type" value={draft.followUpType} onChange={set("followUpType")} options={["Call", "WhatsApp", "Visit", "Email"]} />

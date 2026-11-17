@@ -2,9 +2,9 @@
 
 import { Avatar, Chip, KV, PageHeader, Panel, StatCard, StatusBadge, Tone, SelectField, TextField, tabCls, tabsListCls } from "@/components/ui/page-layout";
 import { DetailDialog, SideSheet, d, darkBtn, fmtDate, outBtn, thCls } from "@/components/master/module-kit";
-import { DEPTS, EMP_TYPES, ROLES, certState, useHr, type Employee } from "@/components/hr/hr-store";
+import { ROLES, certState, type Employee } from "@/components/hr/hr-store";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Eye, Pencil, Phone, Plus, Search, ShieldAlert, UserCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,50 +12,120 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DataPagination from "@/components/common/data-pagination";
+import api from "@/lib/api";
+import Loader from "@/components/common/Loader";
+import EmployeePicker, { type EmployeeOption } from "@/components/hr/employee-picker";
 
 const certTone: Record<string, Tone> = { Valid: "green", Expiring: "amber", Expired: "red", "—": "slate" };
 const mask = (s: string) => (s ? "••••" + s.slice(-4) : "—");
+type EmployeeRecord = Omit<Employee, "id"> & { id: string; reportsToId: string };
+const fromApi = (record: Record<string, unknown>): EmployeeRecord => {
+  const manager = record.reportsTo && typeof record.reportsTo === "object" ? record.reportsTo as Record<string, unknown> : null;
+  const legacyManager = record.reportsToUserId && typeof record.reportsToUserId === "object" ? record.reportsToUserId as Record<string, unknown> : null;
+  const date = (value: unknown) => value ? String(value).slice(0, 10) : "";
+  return {
+    id: String(record._id ?? ""), code: String(record.employeeCode ?? ""), name: String(record.fullName ?? ""),
+    phone: String(record.phone ?? ""), email: String(record.email ?? ""), dept: String(record.department ?? "Other"),
+    designation: String(record.designation ?? ""), type: String(record.employmentType ?? "Full-time"),
+    joined: date(record.joiningDate), status: String(record.status ?? "Active"), reportsTo: String(manager?.fullName ?? legacyManager?.name ?? ""),
+    reportsToId: String(manager?._id ?? legacyManager?._id ?? ""), shift: String(record.shift ?? "General"), role: String(record.systemRole ?? "Employee"),
+    structure: ["Staff", "Worker", "Contract"].includes(String(record.salaryStructure)) ? String(record.salaryStructure) : "Staff",
+    gross: Number(record.monthlyGrossSalary ?? 0), pan: String(record.pan ?? ""),
+    uan: String(record.uan ?? ""), bank: String(record.bankName ?? ""), accNo: String(record.accountNumber ?? ""),
+    ifsc: String(record.ifsc ?? ""), licenceExpiry: date(record.electricianLicenseExpiry),
+    safetyExpiry: date(record.heightSafetyTrainingExpiry),
+  };
+};
 
 export default function EmployeesPage() {
-  const [s, update] = useHr();
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [requestError, setRequestError] = useState("");
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const blank = (): Employee => ({ id: 0, code: `EMP-${String(s.employees.length + 1).padStart(3, "0")}`, name: "", phone: "", email: "", dept: "Sales", designation: "", type: "Full-time", joined: d(0), status: "Active", reportsTo: "", shift: s.shifts[0]?.name ?? "", role: "Sales", structure: s.structures[0]?.name ?? "", gross: 0, pan: "", uan: "", bank: "", accNo: "", ifsc: "", licenceExpiry: "", safetyExpiry: "" });
-  const [draft, setDraft] = useState<Employee>(blank());
+  const blank = (): EmployeeRecord => ({ id: "", code: "", name: "", phone: "", email: "", dept: "Sales", designation: "", type: "Full-time", joined: d(0), status: "Active", reportsTo: "", reportsToId: "", shift: "General", role: "Employee", structure: "Staff", gross: 0, pan: "", uan: "", bank: "", accNo: "", ifsc: "", licenceExpiry: "", safetyExpiry: "" });
+  const [draft, setDraft] = useState<EmployeeRecord>(blank());
   const [formOpen, setFormOpen] = useState(false);
-  const [viewId, setViewId] = useState<number | null>(null);
-  const view = s.employees.find((e) => e.id === viewId);
+  const [viewId, setViewId] = useState<string | null>(null);
+  const view = employees.find((e) => e.id === viewId);
 
-  const rows = useMemo(() => s.employees.filter((e) => (dept === "all" || e.dept === dept) && `${e.name} ${e.code} ${e.phone} ${e.designation}`.toLowerCase().includes(q.toLowerCase())), [s.employees, q, dept]);
+  const load = async () => {
+    const first = await api.get("/employees", { params: { page: 1, limit: 100 } });
+    const items = first.data?.data?.items;
+    if (!Array.isArray(items)) throw new Error("The server returned an invalid employee list.");
+    const pages = Number(first.data?.data?.pagination?.pages) || 1;
+    const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
+      api.get("/employees", { params: { page: index + 2, limit: 100 } })
+    ));
+    const all = [...items, ...rest.flatMap((response) => {
+      const pageItems = response.data?.data?.items;
+      if (!Array.isArray(pageItems)) throw new Error("The server returned an invalid employee list.");
+      return pageItems;
+    })];
+    setEmployees(all.map((record: Record<string, unknown>) => fromApi(record)));
+    setRequestError("");
+  };
+  useEffect(() => {
+    let active = true;
+    load().catch((error: { userMessage?: string; message?: string }) => {
+      if (active) setRequestError(error.userMessage || error.message || "Could not load employees.");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const rows = useMemo(() => employees.filter((e) => (dept === "all" || e.dept === dept) && `${e.name} ${e.code} ${e.phone} ${e.designation}`.toLowerCase().includes(q.toLowerCase())), [employees, q, dept]);
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const paginatedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const set = (k: keyof Employee) => (v: string) => setDraft((x) => ({ ...x, [k]: k === "gross" ? Number(v) : v }));
-  const openForm = (e: Employee) => { setDraft({ ...e }); setFormOpen(true); };
-  const error = !draft.name.trim() || !draft.phone.trim() ? "Name and phone are required." : !(draft.gross > 0) ? "Enter monthly gross salary (Payroll & bank tab)." : "";
-  const save = () => {
+  const set = (k: keyof EmployeeRecord) => (v: string) => setDraft((x) => ({ ...x, [k]: k === "gross" ? Number(v) : v }));
+  const openForm = (e: EmployeeRecord) => { setDraft({ ...e }); setFormOpen(true); };
+  const error = !draft.name.trim() || !draft.phone.trim() ? "Name and phone are required." : !Number.isFinite(draft.gross) || draft.gross < 0 ? "Enter a non-negative monthly gross salary." : "";
+  const save = async () => {
     if (error) return;
-    update((st) => ({ ...st, employees: draft.id ? st.employees.map((x) => (x.id === draft.id ? draft : x)) : [...st.employees, { ...draft, id: Date.now() }] }));
-    if (!draft.id) setPage(1);
-    setFormOpen(false);
+    setSaving(true);
+    setRequestError("");
+    try {
+      const reportsToIsEmployee = employees.some((employee) => employee.id === draft.reportsToId);
+      const payload = {
+        fullName: draft.name, phone: draft.phone, email: draft.email, pan: draft.pan, uan: draft.uan,
+        joiningDate: draft.joined || null, department: draft.dept, designation: draft.designation,
+        employmentType: draft.type, ...(draft.reportsToId && !reportsToIsEmployee ? {} : { reportsTo: draft.reportsToId || null }), shift: draft.shift,
+        systemRole: draft.role, status: draft.status, electricianLicenseExpiry: draft.licenceExpiry || null,
+        heightSafetyTrainingExpiry: draft.safetyExpiry || null, salaryStructure: draft.structure,
+        monthlyGrossSalary: draft.gross, bankName: draft.bank, accountNumber: draft.accNo, ifsc: draft.ifsc,
+      };
+      const response = draft.id ? await api.patch(`/employees/${draft.id}`, payload) : await api.post("/employees", payload);
+      const saved = fromApi(response.data?.data?.item);
+      setEmployees((current) => draft.id
+        ? current.map((employee) => employee.id === saved.id ? saved : employee)
+        : [saved, ...current]);
+      if (!draft.id) setPage(1);
+      setFormOpen(false);
+    } catch (error) {
+      const err = error as { userMessage?: string; message?: string };
+      setRequestError(err.userMessage || err.message || "Could not save employee.");
+    } finally {
+      setSaving(false);
+    }
   };
-  const certDue = (e: Employee) => [certState(e.licenceExpiry), certState(e.safetyExpiry)].some((c) => c === "Expired" || c === "Expiring");
-  const names = s.employees.map((e) => e.name);
+  const certDue = (e: EmployeeRecord) => [certState(e.licenceExpiry), certState(e.safetyExpiry)].some((c) => c === "Expired" || c === "Expiring");
 
   return (
     <div className="!space-y-2">
-      <PageHeader title="Employees" subtitle="One record for every employee: job, salary, bank, documents and certificates.">
+      <PageHeader title="Employees" subtitle="Manage employee records, assignments, payroll and certificates.">
         <Button size="lg" className={darkBtn} onClick={() => openForm(blank())}><Plus /> Add employee</Button>
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard icon={<Users size={24} />} value={s.employees.length} label="Total employees" />
-        <StatCard icon={<UserCheck size={24} />} value={s.employees.filter((e) => e.status === "Active").length} label="Active" />
-        <StatCard icon={<ShieldAlert size={24} />} value={s.employees.filter(certDue).length} label="Certificates to renew" />
+        <StatCard icon={<Users size={24} />} value={employees.length} label="Total employees" />
+        <StatCard icon={<UserCheck size={24} />} value={employees.filter((e) => e.status === "Active").length} label="Active" />
+        <StatCard icon={<ShieldAlert size={24} />} value={employees.filter(certDue).length} label="Certificates to renew" />
       </div>
 
+      {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{requestError}</p>}
       <Panel className="overflow-hidden">
         <div className="flex flex-wrap gap-3 p-4">
           <div className="relative min-w-[240px] flex-1">
@@ -64,7 +134,7 @@ export default function EmployeesPage() {
           </div>
           <Select value={dept || null} onValueChange={(value) => { setDept(value ?? ""); setPage(1); }}>
             <SelectTrigger className="h-10 w-[180px] rounded-xl border-slate-200 bg-slate-50" aria-label="Filter by department"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="all">All departments</SelectItem>{DEPTS.map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent>
+            <SelectContent><SelectItem value="all">All departments</SelectItem>{[...new Set(employees.map((employee) => employee.dept))].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <Table>
@@ -85,7 +155,7 @@ export default function EmployeesPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No employees match.</TableCell></TableRow>}
+            {loading ? <TableRow><TableCell colSpan={8} className="py-14 text-center"><Loader type="inline" text="Loading employees..." /></TableCell></TableRow> : rows.length === 0 && <TableRow><TableCell colSpan={8} className="py-14 text-center text-muted-foreground">No employees match.</TableCell></TableRow>}
           </TableBody>
         </Table>
         <DataPagination
@@ -98,7 +168,7 @@ export default function EmployeesPage() {
         />
       </Panel>
 
-      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit employee" : "New employee"} description="This record feeds attendance, payroll, shifts and crews." error={error} saveLabel="Save employee" onSave={save}>
+      <SideSheet open={formOpen} onOpenChange={setFormOpen} title={draft.id ? "Edit employee" : "New employee"} description="This record feeds attendance, payroll, shifts and crews." error={error} busy={saving} saveLabel="Save employee" onSave={() => void save()}>
         <Tabs defaultValue="personal">
           <TabsList className={tabsListCls}>
             <TabsTrigger value="personal" className={tabCls}>Personal</TabsTrigger>
@@ -113,20 +183,28 @@ export default function EmployeesPage() {
             <TextField label="UAN (PF)" value={draft.uan} onChange={set("uan")} />
           </TabsContent>
           <TabsContent value="job" className="grid gap-4 sm:grid-cols-2">
-            <TextField label="Employee ID" value={draft.code} onChange={set("code")} />
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">Employee code<input readOnly value={draft.code || "Generated when saved"} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600" /></label>
             <TextField label="Joining date" type="date" value={draft.joined} onChange={set("joined")} />
-            <SelectField label="Department" value={draft.dept} onChange={set("dept")} options={DEPTS} />
+            <SelectField label="Department" value={draft.dept} onChange={set("dept")} options={["Sales", "Installation", "Service", "Purchase", "Accounts", "HR", "Management", "Other"]} />
             <TextField label="Designation" value={draft.designation} onChange={set("designation")} />
-            <SelectField label="Employment type" value={draft.type} onChange={set("type")} options={EMP_TYPES} />
-            <SelectField label="Reports to" value={draft.reportsTo || "—"} onChange={(v) => set("reportsTo")(v === "—" ? "" : v)} options={["—", ...names.filter((n) => n !== draft.name)]} />
-            <SelectField label="Shift" value={draft.shift} onChange={set("shift")} options={s.shifts.map((x) => x.name)} />
+            <SelectField label="Employment type" value={draft.type} onChange={set("type")} options={["Full-time", "Part-time", "Contract", "Temporary"]} />
+            <EmployeePicker label="Reports to" value={draft.reportsToId} includeUnassigned placeholder="Select reporting employee"
+              options={employees.filter((employee) => employee.id !== draft.id && employee.status === "Active").map((employee): EmployeeOption => ({
+                id: employee.id, name: employee.name, code: employee.code, designation: employee.designation, department: employee.dept, role: employee.role,
+              }))}
+              fallbackName={draft.reportsTo}
+              onChange={(reportsToId) => {
+                const manager = employees.find((employee) => employee.id === reportsToId);
+                setDraft((current) => ({ ...current, reportsToId, reportsTo: manager?.name ?? "" }));
+              }} />
+            <SelectField label="Shift" value={draft.shift} onChange={set("shift")} options={["General", "Morning", "Evening", "Night"]} />
             <SelectField label="System role" value={draft.role} onChange={set("role")} options={ROLES} />
-            <SelectField label="Status" value={draft.status} onChange={set("status")} options={["Active", "Inactive"]} />
+            <SelectField label="Status" value={draft.status} onChange={set("status")} options={["Active", "Inactive", "Resigned", "Terminated"]} />
             <TextField label="Electrician licence expiry" type="date" value={draft.licenceExpiry} onChange={set("licenceExpiry")} />
             <TextField label="Height-safety training expiry" type="date" value={draft.safetyExpiry} onChange={set("safetyExpiry")} />
           </TabsContent>
           <TabsContent value="pay" className="grid gap-4 sm:grid-cols-2">
-            <SelectField label="Salary structure" value={draft.structure} onChange={set("structure")} options={s.structures.map((x) => x.name)} />
+            <SelectField label="Salary structure" value={draft.structure} onChange={set("structure")} options={["Staff", "Worker", "Contract"]} />
             <TextField label="Monthly gross salary (₹)" type="number" min={0} value={String(draft.gross)} onChange={set("gross")} />
             <TextField label="Bank name" value={draft.bank} onChange={set("bank")} />
             <TextField label="Account number" value={draft.accNo} onChange={set("accNo")} />

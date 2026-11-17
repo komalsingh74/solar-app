@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 import Customer from "../models/customerSchema.js";
 import Lead from "../models/lead.js";
+import Employee from "../models/hrms/Employee.js";
 import SolarProject from "../models/SolarProject.js";
 import SiteSurvey from "../models/siteSurvey.js";
-import User from "../models/userSchema.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import nextSequence from "../services/nextSequence.js";
@@ -55,7 +55,8 @@ const prepareSurvey = async (body, userId, existing) => {
   if (!validId(customerId) || !await Customer.exists({ _id: customerId, status: "Active" })) {
     throw new AppError("Select an active customer", 400, "INVALID_CUSTOMER");
   }
-  if (!validId(engineerId) || !await User.exists({ _id: engineerId, status: "Active" })) {
+  const unchangedEngineer = existing && !Object.hasOwn(body, "engineerId");
+  if (!validId(engineerId) || (!unchangedEngineer && !await Employee.exists({ _id: engineerId, status: "Active" }))) {
     throw new AppError("Select an active engineer", 400, "INVALID_ENGINEER");
   }
   const status = body.status ?? existing?.status ?? "Scheduled";
@@ -75,6 +76,7 @@ const prepareSurvey = async (body, userId, existing) => {
   values.siteAddress = siteAddress.trim();
   values.customer = customerId;
   values.engineer = engineerId;
+  values.engineerUserId = Object.hasOwn(body, "engineerId") ? null : existing?.engineerUserId ?? null;
   values.visitDate = visitDate;
   values.status = status;
   values.updatedBy = userId;
@@ -146,14 +148,15 @@ const prepareSurvey = async (body, userId, existing) => {
 
 const populateSurvey = (query) => query
   .populate("customer", "customerId customerName phone installationAddress")
-  .populate("engineer", "name")
+  .populate("engineer", "fullName employeeCode designation department systemRole")
+  .populate("engineerUserId", "name")
   .populate("lead", "name")
   .populate("project", "projectCode");
 
 export const surveyOptions = asyncHandler(async (_req, res) => {
   const [customers, engineers] = await Promise.all([
     Customer.find({ status: "Active" }).select("_id customerName phone installationAddress").sort({ customerName: 1 }).lean(),
-    User.find({ status: "Active" }).select("_id name").sort({ name: 1 }).lean(),
+    Employee.find({ status: "Active" }).select("_id fullName employeeCode designation department systemRole").sort({ fullName: 1 }).lean(),
   ]);
   res.json({ success: true, data: { customers, engineers } });
 });

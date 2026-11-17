@@ -87,6 +87,11 @@ installationType: {
     // Project team
     engineer: {
       type: Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
+    engineerUserId: {
+      type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },

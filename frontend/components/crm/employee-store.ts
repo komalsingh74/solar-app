@@ -78,7 +78,7 @@ export const blobs = new Map<string, string>();
 // read nested address and document data.
 const normalizeEmployee = (value: Partial<Employee>, index: number): Employee => ({
   id: Number(value.id) || Date.now() + index,
-  code: value.code ?? `EMP-${String(index + 1).padStart(3, "0")}`,
+  code: value.code ?? "",
   name: value.name ?? "", phone: value.phone ?? "", email: value.email ?? "", dob: value.dob ?? "",
   dept: value.dept ?? "Sales", designation: value.designation ?? "", empType: value.empType ?? "Full-time",
   joinDate: value.joinDate ?? "", status: value.status === "Inactive" ? "Inactive" : "Active",

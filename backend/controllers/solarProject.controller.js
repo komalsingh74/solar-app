@@ -1,12 +1,12 @@
 import mongoose from "mongoose";
 import Customer from "../models/customerSchema.js";
+import Employee from "../models/hrms/Employee.js";
 import InstallationTeam from "../models/InstallationTeam.js";
 import InventoryMovement from "../models/InventoryMovement.js";
 import Lead from "../models/lead.js";
 import SiteSurvey from "../models/siteSurvey.js";
 import SolarProject from "../models/SolarProject.js";
 import SubsidyApplication from "../models/SubsidyApplication.js";
-import User from "../models/userSchema.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import nextSequence from "../services/nextSequence.js";
@@ -25,7 +25,8 @@ const populateProject = (query) => query
   .populate("customer", "customerId customerName phone")
   .populate("lead", "name")
   .populate("siteSurvey", "surveyNumber visitDate")
-  .populate("engineer", "name")
+  .populate("engineer", "fullName employeeCode designation department systemRole")
+  .populate("engineerUserId", "name")
   .populate("installationTeam", "teamName");
 
 const prepareProject = async (body, userId, existing) => {
@@ -37,7 +38,8 @@ const prepareProject = async (body, userId, existing) => {
   const surveyId = Object.hasOwn(body, "siteSurveyId") ? body.siteSurveyId || "" : existing?.siteSurvey ? String(existing.siteSurvey) : "";
   if (surveyId && (!validId(surveyId) || !await SiteSurvey.exists({ _id: surveyId, customer: customerId }))) throw new AppError("Select a survey belonging to this customer", 400, "INVALID_SURVEY");
   const engineerId = Object.hasOwn(body, "engineerId") ? body.engineerId || "" : existing?.engineer ? String(existing.engineer) : "";
-  if (engineerId && (!validId(engineerId) || !await User.exists({ _id: engineerId, status: "Active" }))) throw new AppError("Select an active engineer", 400, "INVALID_ENGINEER");
+  const unchangedEngineer = existing && !Object.hasOwn(body, "engineerId");
+  if (engineerId && (!validId(engineerId) || (!unchangedEngineer && !await Employee.exists({ _id: engineerId, status: "Active" })))) throw new AppError("Select an active engineer", 400, "INVALID_ENGINEER");
   const teamId = Object.hasOwn(body, "installationTeamId") ? body.installationTeamId || "" : existing?.installationTeam ? String(existing.installationTeam) : "";
   if (teamId && (!validId(teamId) || !await InstallationTeam.exists({ _id: teamId, isActive: true }))) throw new AppError("Select an active installation team", 400, "INVALID_TEAM");
 
@@ -58,7 +60,9 @@ const prepareProject = async (body, userId, existing) => {
 
   const values = {
     customer: customerId, lead: leadId || null, siteSurvey: surveyId || null,
-    engineer: engineerId || null, installationTeam: teamId || null,
+    engineer: engineerId || null,
+    engineerUserId: Object.hasOwn(body, "engineerId") ? null : existing?.engineerUserId ?? null,
+    installationTeam: teamId || null,
     siteAddress: siteAddress.trim(), systemSizeKw, stage, startDate, targetDate,
     netMeteringStatus, subsidyStatus,
     notes: body.notes ?? existing?.notes ?? "",
@@ -75,7 +79,7 @@ export const solarProjectOptions = asyncHandler(async (_req, res) => {
   const [customers, surveys, engineers, teams, leads] = await Promise.all([
     Customer.find({ status: "Active" }).select("_id customerName phone installationAddress").sort({ customerName: 1 }).lean(),
     SiteSurvey.find({ status: "Completed" }).populate("customer", "customerName").select("_id surveyNumber customer siteAddress recommendedCapacityKw").sort({ visitDate: -1 }).lean(),
-    User.find({ status: "Active" }).select("_id name").sort({ name: 1 }).lean(),
+    Employee.find({ status: "Active" }).select("_id fullName employeeCode designation department systemRole").sort({ fullName: 1 }).lean(),
     InstallationTeam.find({ isActive: true }).select("_id teamName").sort({ teamName: 1 }).lean(),
     Lead.find({ isActive: { $ne: false } }).select("_id name stage").sort({ updatedAt: -1 }).limit(200).lean(),
   ]);

@@ -3,9 +3,20 @@ import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
+const activitySchema = new Schema({
+  text: { type: String, required: true, trim: true },
+  at: { type: Date, default: Date.now },
+}, { _id: false });
+
 const followUpSchema = new Schema(
   {
     title: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    linkName: {
       type: String,
       trim: true,
       default: "",
@@ -17,9 +28,29 @@ const followUpSchema = new Schema(
       default: "Manual",
     },
 
+    stage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    linkedTo: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    linkedId: {
+      type: Schema.Types.ObjectId,
+      default: null,
+    },
+
     type: {
       type: String,
-      enum: ["Call", "WhatsApp", "Visit", "Email", "Task"],
+      enum: [
+        "Call", "WhatsApp", "Visit", "Email", "Task",
+        "Site visit", "Quotation follow-up", "Payment reminder", "Document collection",
+      ],
       default: "Call",
     },
 
@@ -59,6 +90,11 @@ const followUpSchema = new Schema(
 
     assignedTo: {
       type: Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
+    assignedToUserId: {
+      type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
@@ -92,6 +128,11 @@ const followUpSchema = new Schema(
       type: String,
       trim: true,
       default: "",
+    },
+
+    activity: {
+      type: [activitySchema],
+      default: [],
     },
 
     completedAt: {
